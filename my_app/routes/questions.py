@@ -47,3 +47,22 @@ def delete_question(question_id):
     db.session.delete(question)
     db.session.commit()
     return jsonify({"message": "Question deleted"})
+
+
+# Update a question
+@bp.route("/<int:question_id>", methods=["PUT"])
+def update_question(question_id):
+    data = request.get_json()
+    question = Question.query.get(question_id)
+    
+    if not question:
+        return jsonify({"error": "Question not found"}), 404
+
+    question.title = data.get("title", question.title)
+    question.prompt_md = data.get("prompt", question.prompt_md)
+    question.difficulty = data.get("difficulty", question.difficulty)
+    question.tags = data.get("tags", question.tags)
+    question.test_cases = data.get("test_cases", question.test_cases)
+
+    db.session.commit()
+    return jsonify({"message": "Question updated"})
