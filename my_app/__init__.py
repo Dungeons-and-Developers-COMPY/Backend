@@ -12,9 +12,7 @@ def create_app():
     app.config.from_object('config.Config')
 
     db.init_app(app)
-    migrate.init_app(app, db)  # use the Migrate instance here!
-
-    # Blueprints
+    migrate.init_app(app, db)  
 
     from my_app.routes.admin import bp as admin_bp
     app.register_blueprint(admin_bp, url_prefix='/admin')

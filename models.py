@@ -12,10 +12,11 @@ class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(128), nullable=False)
     prompt_md = db.Column(db.Text)
+    question_number = db.Column(db.Integer, nullable=False)
     difficulty = db.Column(db.String(20))
     tags = db.Column(db.String(255))
-    test_cases = db.Column(db.Text)
     created_at = db.Column(db.DateTime)
+    test_cases = db.Column(db.Text, nullable=True)  # Store JSON string of test cases
 
 
 class Submission(db.Model):

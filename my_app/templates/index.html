@@ -16,8 +16,9 @@
     <input name="title" placeholder="Title" required />
     <textarea name="prompt" placeholder="Prompt Markdown" rows="4" required></textarea>
     <input name="difficulty" placeholder="Difficulty (easy, medium, hard)" required />
+    <input name="question_number" placeholder="Question Number" required />
     <input name="tags" placeholder="Tags (comma-separated)" />
-    <textarea name="test_cases" placeholder='Test cases JSON (e.g. [{"input":"1 2", "output":"3"}])' rows="3"></textarea>
+    <textarea name="test_cases" placeholder='Test Cases (JSON format)' rows="4"></textarea>
     <button type="submit">Save Question</button>
   </form>
 
@@ -49,15 +50,16 @@
             const safePrompt = JSON.stringify(q.prompt_md);
             const safeDifficulty = JSON.stringify(q.difficulty);
             const safeTags = JSON.stringify(q.tags);
+            const safeNumber = JSON.stringify(q.question_number);
             const safeTestCases = JSON.stringify(q.test_cases);
 
             div.innerHTML = `
-              <h3>${q.title}</h3>
+              <h3>Q${q.question_number}: ${q.title}</h3>
               <pre>${q.prompt_md}</pre>
               <p><strong>Difficulty:</strong> ${q.difficulty}</p>
               <p><strong>Tags:</strong> ${q.tags}</p>
-              <p><strong>Test Cases:</strong> <pre>${q.test_cases}</pre></p>
-              <button onclick='editQuestion(${q.id}, ${safeTitle}, ${safePrompt}, ${safeDifficulty}, ${safeTags}, ${safeTestCases})'>Edit</button>
+              <p><strong>Test Cases:</strong><pre>${q.test_cases}</pre></p>
+              <button onclick='editQuestion(${q.id}, ${safeTitle}, ${safePrompt}, ${safeDifficulty}, ${safeTags}, ${safeNumber}, ${safeTestCases})'>Edit</button>
               <button onclick="deleteQuestion(${q.id})">Delete</button>
               <hr/>
             `;
@@ -86,11 +88,12 @@
       .catch(() => alert('Failed to delete question'));
     }
 
-    function editQuestion(id, title, prompt, difficulty, tags, test_cases) {
+    function editQuestion(id, title, prompt, difficulty, tags, question_number, test_cases) {
       form.title.value = title;
       form.prompt.value = prompt;
       form.difficulty.value = difficulty;
       form.tags.value = tags;
+      form.question_number.value = question_number;
       form.test_cases.value = test_cases;
 
       editMode = true;
@@ -104,6 +107,7 @@
         title: form.title.value,
         prompt: form.prompt.value,
         difficulty: form.difficulty.value,
+        question_number: form.question_number.value,
         tags: form.tags.value,
         test_cases: form.test_cases.value
       };
