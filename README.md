@@ -4,19 +4,20 @@
 For your first time running the files do the following
 
 
-In windows powershell enter 
+Install the following two applications
+
+Docker:
+
 ```Python
-$env:FLASK_APP = "__main__.py"
+https://www.docker.com/products/docker-desktop/
 ```
 
+PostgreSQL
 ```Python
-python __main__.py db init
-python __main__.py db migrate -m "Initial migration"
-python __main__.py db upgrade
+https://www.enterprisedb.com/downloads/postgres-postgresql-downloads
 ```
 
-To run:
-
+Once docker is installed your computer will restart and will be able to open the webpage under 
 ```Python
-python -m my_app
+http://localhost:5000
 ```
