@@ -7,7 +7,7 @@ url = f"http://localhost:5000/questions/stats/{question_number}"
 # Your code that should be tested against the test cases
 code_submission = """
 for i in range(1, 6):
-    print('* * i)
+    print('*' * i)
 """
 
 payload = {

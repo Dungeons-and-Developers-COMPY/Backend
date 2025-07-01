@@ -163,3 +163,11 @@ def get_question_stats(question_number):
         })
 
     return jsonify(result)
+
+@bp.route("/stats/reset", methods=["DELETE"])
+def reset_all_stats():
+    stats = QuestionStat.query.all()
+    for stat in stats:
+        stat.data = {"attempts": 0, "passed": 0}
+    db.session.commit()
+    return jsonify({"message": "All question stats have been reset."})

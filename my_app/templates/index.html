@@ -48,6 +48,7 @@
     <button class="filter-btn" data-filter="easy">Easy</button>
     <button class="filter-btn" data-filter="medium">Medium</button>
     <button class="filter-btn" data-filter="hard">Hard</button>
+    <button id="reset-stats-btn" style="background:#dc3545; color:white; margin-left:1rem;">Reset All Stats</button>
   </div>
 
   <!-- List View -->
@@ -161,6 +162,18 @@
     function goBackToList() {
       hideDetailView();
     }
+
+    document.getElementById('reset-stats-btn').addEventListener('click', () => {
+    if (!confirm('Are you sure you want to reset all question stats? This cannot be undone.')) return;
+
+    fetch('/questions/stats/reset', { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) throw new Error('Reset failed');
+        return res.json();
+      })
+      .then(data => alert(data.message))
+      .catch(() => alert('Failed to reset stats'));
+    });
 
     // Navigation
     prevBtn.onclick = () => {
