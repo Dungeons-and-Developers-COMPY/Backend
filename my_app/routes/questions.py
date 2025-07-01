@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from models import db, Question
+from models import db, Question, QuestionStat
 import io
 import contextlib
 import json
@@ -41,9 +41,9 @@ def get_questions():
     } for q in questions]
     return jsonify(questions_list)
 
-@bp.route("/<int:question_id>", methods=["DELETE"])
-def delete_question(question_id):
-    question = Question.query.get(question_id)
+@bp.route("/<int:question_number>", methods=["DELETE"])
+def delete_question(question_number):
+    question = Question.query.filter_by(question_number=question_number).first()
     if not question:
         return jsonify({"error": "Question not found"}), 404
 
@@ -51,10 +51,10 @@ def delete_question(question_id):
     db.session.commit()
     return jsonify({"message": "Question deleted"})
 
-@bp.route("/<int:question_id>", methods=["PUT"])
-def update_question(question_id):
+@bp.route("/<int:question_number>", methods=["PUT"])
+def update_question(question_number):
     data = request.get_json()
-    question = Question.query.get(question_id)
+    question = Question.query.filter_by(question_number=question_number).first()
 
     if not question:
         return jsonify({"error": "Question not found"}), 404
@@ -68,49 +68,98 @@ def update_question(question_id):
     db.session.commit()
     return jsonify({"message": "Question updated"})
 
-
-@bp.route("/evaluate/<int:question_id>", methods=["POST"])
-def evaluate_code(question_id):
+@bp.route("/stats/<int:question_number>", methods=["POST"])
+def evaluate_and_record_stats(question_number):
     data = request.get_json()
     user_code = data.get("code")
-
-    question = Question.query.get(question_id)
+    question = Question.query.filter_by(question_number=question_number).first()
     if not question:
         return jsonify({"error": "Question not found"}), 404
 
     try:
-        test_cases = json.loads(question.test_cases)
+        test_cases = json.loads(question.test_cases or "[]")
     except Exception as e:
-        print("Failed to parse test_cases:", question.test_cases)
-        print("Error:", e)
         return jsonify({"error": "Invalid test case format", "details": str(e)}), 500
 
+    all_passed = True
+    failed_case = None
+    error_occurred = False
+    output = None
+    expected_output = None
 
-    # Test each case
     for case in test_cases:
         input_data = case["input"]
         expected_output = case["output"]
 
-        # Capture output
         f = io.StringIO()
         try:
             with contextlib.redirect_stdout(f):
                 exec(user_code, {"input": lambda: input_data})
             output = f.getvalue().strip()
         except Exception as e:
-            return jsonify({
-                "success": False,
-                "error": f"Code error: {str(e)}",
-                "failed_case": case
-            })
+            # **Here we catch runtime errors in user code**
+            all_passed = False
+            error_occurred = True
+            failed_case = case
+            error_msg = str(e)
+            break
 
         if output != expected_output:
-            return jsonify({
-                "success": False,
-                "message": "Test case failed",
-                "input": input_data,
-                "expected": expected_output,
-                "got": output
-            })
+            all_passed = False
+            failed_case = case
+            break
 
-    return jsonify({"success": True, "message": "All test cases passed!"})
+    # Always bump attempts, pass only if all_passed is True and no error
+    tags = [t.strip() for t in (question.tags or "").split(",") if t.strip()] or ["_UNTAGGED_"]
+
+    for tag in tags:
+        stat = QuestionStat.query.filter_by(question_id=question.id, tag=tag).one_or_none()
+        if not stat:
+            stat = QuestionStat(question_id=question.id, tag=tag)
+            db.session.add(stat)
+
+        # bump with passed=True only if all tests passed and no error
+        stat.bump(passed=all_passed and not error_occurred)
+
+    db.session.commit()
+
+    if error_occurred:
+        return jsonify({
+            "success": False,
+            "error": f"Code error: {error_msg}",
+            "failed_case": failed_case
+        })
+
+    if all_passed:
+        return jsonify({"success": True, "message": "All test cases passed!"})
+    else:
+        return jsonify({
+            "success": False,
+            "message": "At least one test case failed.",
+            "failed_case": failed_case,
+            "expected": expected_output,
+            "got": output
+        })
+
+
+@bp.route("/stats/<int:question_number>", methods=["GET"])
+def get_question_stats(question_number):
+    question = Question.query.filter_by(question_number=question_number).first()
+
+    if not question:
+        return jsonify({"error": "Question not found"}), 404
+
+    stats = QuestionStat.query.filter_by(question_id=question.id).all()
+
+    if not stats:
+        return jsonify({"message": "No stats found for this question."}), 404
+
+    result = []
+    for stat in stats:
+        result.append({
+            "tag": stat.tag,
+            "total_attempts": stat.data.get("attempts", 0),
+            "total_passed": stat.data.get("passed", 0)
+        })
+
+    return jsonify(result)
