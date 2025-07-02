@@ -7,13 +7,11 @@ services:
       - "5000:5000"
     volumes:
       - .:/app
+      
     env_file:
       - .env
     depends_on:
       - db
-    environment:
-      - ENCRYPTION_KEY=VwuAAB6ryAHwsZ6FGkTIm7wsTWQ8yl3dTP6tXrWRMag=
-
   db:
     image: postgres:15
     restart: always

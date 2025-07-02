@@ -12,20 +12,41 @@ def create_question():
         data = request.get_json()
         print("Received data:", data)
 
+        # Get existing question_numbers directly as integers
+        existing_numbers = {
+            q.question_number
+            for q in Question.query.with_entities(Question.question_number)
+            if isinstance(q.question_number, int)
+        }
+
+        # Find the first available number starting from 1
+        question_number = 1
+        while question_number in existing_numbers:
+            question_number += 1
+
+        # Create the question
         question = Question(
             title=data["title"],
-            prompt_md=data["prompt"],
+            prompt_md=data["prompt_md"],
             difficulty=data["difficulty"],
             tags=data.get("tags", ""),
-            question_number=data["question_number"],
-            test_cases=data.get("test_cases", "[]") 
+            question_number=question_number,
+            test_cases=data.get("test_cases", "[]")
         )
+
         db.session.add(question)
         db.session.commit()
-        return jsonify({"message": "Question added"}), 201
+
+        return jsonify({
+            "message": "Question added",
+            "question_number": question.question_number,
+            "id": question.id
+        }), 201
+
     except Exception as e:
         print("Error creating question:", e)
         return jsonify({"error": str(e)}), 400
+
 
 @bp.route("/", methods=["GET"])
 def get_questions():
@@ -41,9 +62,9 @@ def get_questions():
     } for q in questions]
     return jsonify(questions_list)
 
-@bp.route("/<int:question_number>", methods=["DELETE"])
-def delete_question(question_number):
-    question = Question.query.filter_by(question_number=question_number).first()
+@bp.route("/<int:question_id>", methods=["DELETE"])
+def delete_question(question_id):
+    question =  Question.query.get(question_id)
     if not question:
         return jsonify({"error": "Question not found"}), 404
 
@@ -51,10 +72,10 @@ def delete_question(question_number):
     db.session.commit()
     return jsonify({"message": "Question deleted"})
 
-@bp.route("/<int:question_number>", methods=["PUT"])
-def update_question(question_number):
+@bp.route("/<int:question_id>", methods=["PUT"])
+def update_question(question_id):
     data = request.get_json()
-    question = Question.query.filter_by(question_number=question_number).first()
+    question =  Question.query.get(question_id)
 
     if not question:
         return jsonify({"error": "Question not found"}), 404
@@ -68,11 +89,12 @@ def update_question(question_number):
     db.session.commit()
     return jsonify({"message": "Question updated"})
 
-@bp.route("/stats/<int:question_number>", methods=["POST"])
-def evaluate_and_record_stats(question_number):
+@bp.route("/stats/<int:question_id>", methods=["POST"])
+def evaluate_and_record_stats(question_id):
     data = request.get_json()
     user_code = data.get("code")
-    question = Question.query.filter_by(question_number=question_number).first()
+    
+    question = Question.query.get(question_id)
     if not question:
         return jsonify({"error": "Question not found"}), 404
 
@@ -97,7 +119,6 @@ def evaluate_and_record_stats(question_number):
                 exec(user_code, {"input": lambda: input_data})
             output = f.getvalue().strip()
         except Exception as e:
-            # **Here we catch runtime errors in user code**
             all_passed = False
             error_occurred = True
             failed_case = case
@@ -109,7 +130,6 @@ def evaluate_and_record_stats(question_number):
             failed_case = case
             break
 
-    # Always bump attempts, pass only if all_passed is True and no error
     tags = [t.strip() for t in (question.tags or "").split(",") if t.strip()] or ["_UNTAGGED_"]
 
     for tag in tags:
@@ -118,7 +138,6 @@ def evaluate_and_record_stats(question_number):
             stat = QuestionStat(question_id=question.id, tag=tag)
             db.session.add(stat)
 
-        # bump with passed=True only if all tests passed and no error
         stat.bump(passed=all_passed and not error_occurred)
 
     db.session.commit()
@@ -142,9 +161,9 @@ def evaluate_and_record_stats(question_number):
         })
 
 
-@bp.route("/stats/<int:question_number>", methods=["GET"])
-def get_question_stats(question_number):
-    question = Question.query.filter_by(question_number=question_number).first()
+@bp.route("/stats/<int:question_id>", methods=["GET"])
+def get_question_stats(question_id):
+    question = Question.query.get(question_id)
 
     if not question:
         return jsonify({"error": "Question not found"}), 404
@@ -163,6 +182,7 @@ def get_question_stats(question_number):
         })
 
     return jsonify(result)
+
 
 @bp.route("/stats/reset", methods=["DELETE"])
 def reset_all_stats():
