@@ -1,13 +1,12 @@
 import requests
 
-
-question_number = 1 # Change this to the actual question number you want to test
+question_number = 4
 url = f"http://localhost:5000/questions/stats/{question_number}"
 
 # Your code that should be tested against the test cases
 code_submission = """
-for i in range(1, 6):
-    print('*' * i)
+def func(word):
+    return word[::-1]
 """
 
 payload = {
@@ -35,13 +34,13 @@ except Exception:
     print("Raw response:", response.text)
     
 
+# Random
+#response = requests.get(f"http://localhost:5000/questions/random/medium")
 
-response = requests.get(f"http://localhost:5000/questions/random/easy")
-
-try:
-    print(response.json())
-except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
+#try:
+#    print(response.json())
+#except Exception:
+#    print("Non-JSON response received:")
+#    print("Status code:", response.status_code)
+#    print("Raw response:", response.text)
     

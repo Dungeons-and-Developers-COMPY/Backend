@@ -49,13 +49,16 @@ class QuestionStat(db.Model):
     tag  = db.Column(db.String(100), nullable=False)
 
     # make JSON mutable so in‑place changes are tracked
-    data = db.Column(MutableDict.as_mutable(JSON), nullable=False, default=dict)
+    data = db.Column(MutableDict.as_mutable(JSON), nullable=False, default=lambda: {})
 
     __table_args__ = (db.UniqueConstraint('question_id', 'tag',
                                           name='uq_stat_qid_tag'),)
 
-    def bump(self, passed: bool):
-        # MutableDict will track in‑place edits automatically
+    def bump(self, passed=False):
+        if self.data is None:
+            self.data = {"attempts": 0, "passed": 0}
+
         self.data["attempts"] = self.data.get("attempts", 0) + 1
         if passed:
             self.data["passed"] = self.data.get("passed", 0) + 1
+

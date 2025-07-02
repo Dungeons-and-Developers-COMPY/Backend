@@ -4,6 +4,7 @@ import io
 import contextlib
 import json
 import random
+import ast, builtins, sys
 
 bp = Blueprint('questions', __name__)
 
@@ -82,95 +83,130 @@ def update_question(question_id):
         return jsonify({"error": "Question not found"}), 404
 
     question.title = data.get("title", question.title)
-    question.prompt_md = data.get("prompt", question.prompt_md)
+    question.prompt_md = data.get("prompt_md", question.prompt_md)
     question.difficulty = data.get("difficulty", question.difficulty)
     question.tags = data.get("tags", question.tags)
     question.question_number = data.get("question_number", question.question_number)
+    question.test_cases = data.get("test_cases", question.test_cases)
 
     db.session.commit()
     return jsonify({"message": "Question updated"})
 
-@bp.route("/stats/<int:question_id>", methods=["POST"])
-def evaluate_and_record_stats(question_id):
-    data = request.get_json()
-    user_code = data.get("code")
-    
-    question = Question.query.get(question_id)
+@bp.route("/stats/<int:question_number>", methods=["POST"])
+def evaluate_and_record_stats(question_number):
+    data = request.get_json(silent=True)
+    if not data or "code" not in data:
+        return jsonify({"error": "Missing JSON body or 'code' field"}), 400
+    user_code = data["code"]
+
+    question = Question.query.filter_by(question_number=question_number).first()
     if not question:
-        return jsonify({"error": "Question not found"}), 404
+        return jsonify({"error": f"Question {question_number} not found"}), 404
 
     try:
         test_cases = json.loads(question.test_cases or "[]")
-    except Exception as e:
+    except json.JSONDecodeError as e:
         return jsonify({"error": "Invalid test case format", "details": str(e)}), 500
 
     all_passed = True
     failed_case = None
     error_occurred = False
-    output = None
-    expected_output = None
+    error_msg = ""
+
+    # Prepare an exec environment dictionary to capture the function
+    exec_env = {}
+
+    try:
+        exec(user_code, exec_env)
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Code compilation error: {str(e)}"
+        }), 200
+
+    func = exec_env.get("func")
+    if not callable(func):
+        return jsonify({
+            "success": False,
+            "error": "Function 'func' not found in submitted code."
+        }), 200
 
     for case in test_cases:
-        input_data = case["input"]
+        raw_input_data = case["input"]
         expected_output = case["output"]
 
-        f = io.StringIO()
         try:
-            with contextlib.redirect_stdout(f):
-                exec(user_code, {"input": lambda: input_data})
-            output = f.getvalue().strip()
+            # Parse input to Python object
+            parsed_input = ast.literal_eval(raw_input_data)
+        except Exception:
+            parsed_input = raw_input_data  
+
+        try:
+            # Call student function with the parsed input
+            result = func(parsed_input)
+
+            # Convert result to string for comparison (adjust if output format differs)
+            result_str = str(result).strip()
+
+            if result_str != expected_output.strip():
+                all_passed = False
+                failed_case = case
+                break
         except Exception as e:
-            all_passed = False
             error_occurred = True
-            failed_case = case
             error_msg = str(e)
-            break
-
-        if output != expected_output:
-            all_passed = False
             failed_case = case
+            all_passed = False
             break
 
-    tags = [t.strip() for t in (question.tags or "").split(",") if t.strip()] or ["_UNTAGGED_"]
+    # Update stats, commit, and respond as before...
 
+    # Record stats
+    tags = (question.tags or "").split(",")  # assume comma-separated tags
     for tag in tags:
-        stat = QuestionStat.query.filter_by(question_id=question.id, tag=tag).one_or_none()
+        tag = tag.strip()
+        if not tag:
+            continue
+        stat = QuestionStat.query.filter_by(question_id=question.id, tag=tag).first()
         if not stat:
-            stat = QuestionStat(question_id=question.id, tag=tag)
+            stat = QuestionStat(question_id=question.id, tag=tag, data={})
             db.session.add(stat)
-
-        stat.bump(passed=all_passed and not error_occurred)
+        stat.bump(passed=all_passed)
 
     db.session.commit()
 
     if error_occurred:
         return jsonify({
             "success": False,
-            "error": f"Code error: {error_msg}",
+            "error": f"Code runtime error: {error_msg}",
             "failed_case": failed_case
-        })
+        }), 200
 
     if all_passed:
-        return jsonify({"success": True, "message": "All test cases passed!"})
+        return jsonify({
+            "success": True,
+            "message": "All test cases passed!",
+            "question_number": question_number
+        }), 200
     else:
         return jsonify({
             "success": False,
             "message": "At least one test case failed.",
             "failed_case": failed_case,
             "expected": expected_output,
-            "got": output
-        })
+            "got": result_str,
+            "question_number": question_number
+        }), 200
 
 
-@bp.route("/stats/<int:question_id>", methods=["GET"])
-def get_question_stats(question_id):
-    question = Question.query.get(question_id)
 
+@bp.route("/stats/<int:question_number>", methods=["GET"])
+def get_question_stats(question_number):
+    question = Question.query.filter_by(question_number=question_number).first()
     if not question:
-        return jsonify({"error": "Question not found"}), 404
+        return jsonify({"error": f"Question {question_number} not found"}), 404
 
     stats = QuestionStat.query.filter_by(question_id=question.id).all()
-
     if not stats:
         return jsonify({"message": "No stats found for this question."}), 404
 
@@ -183,6 +219,8 @@ def get_question_stats(question_id):
         })
 
     return jsonify(result)
+
+
 
 
 @bp.route("/stats/reset", methods=["DELETE"])
