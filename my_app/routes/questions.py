@@ -3,6 +3,7 @@ from models import db, Question, QuestionStat
 import io
 import contextlib
 import json
+import random
 
 bp = Blueprint('questions', __name__)
 
@@ -191,3 +192,31 @@ def reset_all_stats():
         stat.data = {"attempts": 0, "passed": 0}
     db.session.commit()
     return jsonify({"message": "All question stats have been reset."})
+
+@bp.route("/random/<difficulty>", methods=["GET"])
+def get_random_question_by_difficulty(difficulty):
+    try:
+        # Query questions matching difficulty (case-insensitive)
+        questions = Question.query.filter(
+            db.func.lower(Question.difficulty) == difficulty.lower()
+        ).all()
+
+        if not questions:
+            return jsonify({"error": f"No questions found for difficulty '{difficulty}'."}), 404
+
+        # Choose a random question
+        question = random.choice(questions)
+
+        # Return the question data
+        return jsonify({
+            "id": question.id,
+            "title": question.title,
+            "prompt_md": question.prompt_md,
+            "difficulty": question.difficulty,
+            "tags": question.tags,
+            "question_number": question.question_number,
+            "test_cases": question.test_cases
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
