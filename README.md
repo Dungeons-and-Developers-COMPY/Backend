@@ -1,8 +1,10 @@
 # Backend
 
+# Copy files to server
 
 For your first time running the files do the following
 
+cp -r Backend abdibr008@dnd-vm-1.cs.uct.ac.za:
 
 Install the following two applications:
 
