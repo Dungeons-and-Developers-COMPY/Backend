@@ -22,6 +22,11 @@ Once docker is installed, your computer will restart and will be able to run the
 docker-compose up --build
 ```
 
+Acess the admin portal through the following link:
+```Python
+http://127.0.0.1:5000/admin
+```
+
 ## API 
 
 There are several API endpoints where you can get information from the database.
