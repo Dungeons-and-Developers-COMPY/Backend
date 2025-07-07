@@ -4,8 +4,8 @@ from models import User
 app = create_app()
 app.app_context().push()
 
-admin = User(username="Ibrahim", role="admin")
-admin.set_password("Dnd4ever!")  # Make sure you call your password hashing method
+admin = User(username="", role="admin")
+admin.set_password("")  
 
 db.session.add(admin)
 db.session.commit()
