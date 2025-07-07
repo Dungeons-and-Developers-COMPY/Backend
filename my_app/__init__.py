@@ -22,7 +22,7 @@ def create_app():
     migrate.init_app(app, db)
 
     login_manager.init_app(app)
-    login_manager.login_view = 'auth.login'  # your login route
+    login_manager.login_view = 'admin.login'  # your login route
 
     # User loader callback
     @login_manager.user_loader
@@ -41,9 +41,7 @@ def create_app():
 
     from my_app.routes.admin import bp as admin_api_bp
     app.register_blueprint(admin_api_bp, url_prefix="/admin")
-
-    from my_app.routes.auth import bp as auth_bp
-    app.register_blueprint(auth_bp, url_prefix="/admin")
+    
     # ------------------------------------------------------------------
     #  FRONTEND  — everything lives under /admin
     # ------------------------------------------------------------------
@@ -52,16 +50,11 @@ def create_app():
     @app.route("/admin")
     @login_required
     def admin_index():
-        if not app.config["ENABLE_ADMIN"]:
-            return "Admin mode is disabled", 403
         return send_from_directory(os.path.join(app.static_folder, "admin"), "index.html")
 
     # 2)  /admin/_next/...  → Next.js JS / CSS / fonts
     @app.route("/admin/<path:path>")
     def admin_catchall(path):
-        if not app.config["ENABLE_ADMIN"]:
-            return "Admin mode is disabled", 403
-
         full_path = os.path.join(app.static_folder, "admin", path)
 
         if os.path.exists(full_path):
