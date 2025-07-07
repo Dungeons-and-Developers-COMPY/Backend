@@ -1,10 +1,12 @@
 from flask import Blueprint, request, jsonify
-from models import db, Question, QuestionStat
+from models import db, Question, QuestionStat, User
 import io
 import contextlib
 import json
 import random
 import ast, builtins, sys
+from flask import request, session
+from werkzeug.security import check_password_hash
 
 bp = Blueprint('questions', __name__)
 
