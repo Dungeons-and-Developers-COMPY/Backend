@@ -20,6 +20,15 @@ def restrict_to_admins():
     if current_user.role != "admin":
         abort(403)
         
+@bp.route("/check-auth", methods=["GET"])
+def check_auth():
+    if current_user.is_authenticated:
+        return jsonify({
+            "username": current_user.username,
+            "role": current_user.role
+        })
+    return jsonify({"error": "Not authenticated"}), 401
+
 @bp.route("/manage", methods=["GET", "POST"])
 def manage_users():
     if not current_app.config.get("ENABLE_ADMIN"):
@@ -51,6 +60,30 @@ def manage_users():
         for u in users
     ])
 
+
+@bp.route('/add-admin', methods=['POST'])
+def add_admin():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+
+    existing_user = User.query.filter_by(username=username).first()
+    if existing_user:
+        return jsonify({"error": "User with that username already exists"}), 409
+
+    try:
+        new_admin = User(username=username, role="admin")
+        new_admin.set_password(password) # Assuming set_password hashes the password
+        db.session.add(new_admin)
+        db.session.commit()
+        return jsonify({"message": f"Admin user '{username}' created successfully", "id": new_admin.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to create admin: {str(e)}"}), 500
+    
 @bp.route('/questions')
 def list_questions():
     questions = Question.query.all()

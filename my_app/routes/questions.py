@@ -15,24 +15,32 @@ bp = Blueprint('questions', __name__)
 
 @bp.before_request
 def require_admin_auth():
-    auth = request.authorization
+    if not request.path.startswith("/admin"):
+        return  # No auth required
 
-    if request.path.startswith('/admin/'):
-        return None
-    
-    if not auth or not auth.username or not auth.password:
-        return jsonify({"error": "Authentication required"}), 401, {
-            "WWW-Authenticate": "Basic realm='Login required'"
-        }
+    if session.get("admin_logged_in") and session.get("admin_user_id"):
+        return  # Session is valid, user is logged in
 
-    user = User.query.filter_by(username=auth.username).first()
-    if not user or not check_password_hash(user.password_hash, auth.password):
+    return jsonify({"error": "Login required"}), 401
+
+
+@bp.route("/admin/login", methods=["POST"])
+def admin_login():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+
+    user = User.query.filter_by(username=username).first()
+    if not user or not check_password_hash(user.password_hash, password):
         return jsonify({"error": "Invalid credentials"}), 403
 
     if user.role != "admin":
         return jsonify({"error": "Admin access required"}), 403
 
-    g.current_user = user  # Optional: make available in route functions
+    session["admin_logged_in"] = True
+    session["admin_user_id"] = user.id
+
+    return jsonify({"message": "Logged in successfully"})
 
 @bp.route("/", methods=["POST"])
 def create_question():

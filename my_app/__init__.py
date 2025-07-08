@@ -14,7 +14,8 @@ login_manager = LoginManager()
 
 def create_app():
     app = Flask(__name__, static_folder="static/out", static_url_path="")
-
+    
+    app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
     app.config.from_object("config.Config")
     db.init_app(app)
     migrate.init_app(app, db)
