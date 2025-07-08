@@ -47,15 +47,20 @@ import requests
 question_number = 3
 url = f"http://localhost:5000/questions/stats/{question_number}"
 
-# Your code that should be tested against the test cases
-code_submission = r"""
+# Code to be tested against the test cases
+code_submission = """
 def func(word):
     return word[::-1]
 """
+
 payload = {
     "code": code_submission
 }
-response = requests.get(f"http://localhost:5000/questions/stats/{question_number}")
+
+# Provide your admin username and password here
+auth = ("Admin_Username", "Admin_Password")
+
+response = requests.post(url, json=payload, auth=auth)
 
 try:
     print(response.json())
@@ -63,11 +68,14 @@ except Exception:
     print("Non-JSON response received:")
     print("Status code:", response.status_code)
     print("Raw response:", response.text)
+
 ```
 
 #### Output
 ```Python
 {'message': 'All test cases passed!', 'question_number': 3, 'success': True}
+OR
+{'error': 'Invalid credentials'}
 ```
 
 ### 2.) Get submission statistics for a particular question (GET)
@@ -76,7 +84,11 @@ except Exception:
 import requests
 
 question_number = 3
-response = requests.get(f"http://localhost:5000/questions/stats/{question_number}")
+url = f"http://localhost:5000/questions/stats/{question_number}"
+
+auth = ("Admin_Username", "Admin_Password")
+
+response = requests.get(url, auth=auth)
 
 try:
     print(response.json())
@@ -88,6 +100,8 @@ except Exception:
 #### Output
 ```Python
 [{'tag': 'slicing', 'total_attempts': 6, 'total_passed': 6}]
+OR
+{'error': 'Invalid credentials'}
 ```
 
 
@@ -96,8 +110,13 @@ except Exception:
 ```Python
 import requests
 
+
 difficulty = 'Easy'
-response = requests.get(f"http://localhost:5000/questions/random/{difficulty}")
+url = f"http://localhost:5000/questions/random/{difficulty}"
+
+auth = ("Ibrahim", "Dnd4ever!")
+
+response = requests.get(url, auth=auth)
 
 try:
     print(response.json())
@@ -109,6 +128,8 @@ except Exception:
 #### Output
 ```Python
 {'difficulty': 'easy', 'id': 1, 'prompt_md': 'Print the following pyramid of stars:\n*\n**\n***\n****\n*****', 'question_number': 1, 'tags': 'loop,print', 'test_cases': '[\n  {\n    "input": "",\n    "output": "*\\n**\\n***\\n****\\n*****"\n  }\n]\n', 'title': 'Pyramid of Stars'}
+OR
+{'error': 'Invalid credentials'}
 ```
 
 
