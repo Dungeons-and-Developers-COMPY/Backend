@@ -3,8 +3,8 @@
 LOG INTO UCT VPN FIRST!!!
 
 ## Copy files to server
-
-cp -r Backend abdibr008@dnd-vm-1.cs.uct.ac.za:
+Windows:
+scp -r Backend abdibr008@dnd-vm-1.cs.uct.ac.za:
 
 ## Running code
 For your first time running the files do the following
