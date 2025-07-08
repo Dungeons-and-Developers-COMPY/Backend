@@ -26,7 +26,10 @@ Once docker is installed, your computer will restart and will be able to run the
 ```Python
 docker-compose up --build
 ```
-
+On the UCT server launch in detached mode (-d) so it runs after the window is closed.
+```Python
+sudo docker compose up -d
+```
 Acess the admin portal through the following link:
 ```Python
 http://127.0.0.1:5000/admin
