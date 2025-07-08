@@ -44,3 +44,22 @@ with open(OUTPUT_FILE, "w") as f:
 
 print(f"✅ Created {NUM_USERS} student users.")
 print(f"📝 Credentials saved to: {OUTPUT_FILE}")
+
+
+"""
+
+from my_app import create_app, db
+from models import User
+
+app = create_app()
+app.app_context().push()
+
+admin = User(username="Ibrahim", role="admin")
+admin.set_password("Dnd4")  
+
+db.session.add(admin)
+db.session.commit()
+
+print(f"Admin user created with ID: {admin.id}")
+
+"""

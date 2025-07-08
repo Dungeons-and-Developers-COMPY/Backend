@@ -5,9 +5,9 @@ import contextlib
 import json
 import random
 import ast, builtins, sys
-from flask import request, session
+from flask import request, session,send_from_directory
 from werkzeug.security import check_password_hash
-
+import os
 bp = Blueprint('questions', __name__)
 
 @bp.route("/", methods=["POST"])
@@ -260,3 +260,4 @@ def get_random_question_by_difficulty(difficulty):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    

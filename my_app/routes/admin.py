@@ -20,7 +20,7 @@ def restrict_to_admins():
     if current_user.role != "admin":
         abort(403)
         
-@bp.route("/admin", methods=["GET", "POST"])
+@bp.route("/manage", methods=["GET", "POST"])
 def manage_users():
     if not current_app.config.get("ENABLE_ADMIN"):
         return jsonify({"error": "Admin panel is disabled"}), 403
@@ -67,13 +67,8 @@ def list_questions():
     return jsonify(data)
 
 
-@bp.route("/login", methods=["GET", "POST"])
+@bp.route("/login", methods=["POST"])
 def login():
-    if request.method == "GET":
-        return send_from_directory(
-            os.path.join(current_app.static_folder, "admin"),
-            "index.html"
-        )
 
     data = request.get_json()
     username = data.get("username")
