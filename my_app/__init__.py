@@ -48,7 +48,6 @@ def create_app():
 
     @app.route("/admin")
     @app.route("/admin/")
-    @login_required
     def serve_admin():
         return send_from_directory(app.static_folder, "admin.html")
     
