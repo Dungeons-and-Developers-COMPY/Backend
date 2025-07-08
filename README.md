@@ -1,5 +1,7 @@
 # Backend
 
+LOG INTO UCT VPN FIRST!!!
+
 ## Copy files to server
 
 cp -r Backend abdibr008@dnd-vm-1.cs.uct.ac.za:
