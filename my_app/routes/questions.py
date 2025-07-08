@@ -8,7 +8,31 @@ import ast, builtins, sys
 from flask import request, session,send_from_directory
 from werkzeug.security import check_password_hash
 import os
+from flask import g
+from base64 import b64decode
+
 bp = Blueprint('questions', __name__)
+
+@bp.before_request
+def require_admin_auth():
+    auth = request.authorization
+
+    if request.path.startswith('/admin/'):
+        return None
+    
+    if not auth or not auth.username or not auth.password:
+        return jsonify({"error": "Authentication required"}), 401, {
+            "WWW-Authenticate": "Basic realm='Login required'"
+        }
+
+    user = User.query.filter_by(username=auth.username).first()
+    if not user or not check_password_hash(user.password_hash, auth.password):
+        return jsonify({"error": "Invalid credentials"}), 403
+
+    if user.role != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    g.current_user = user  # Optional: make available in route functions
 
 @bp.route("/", methods=["POST"])
 def create_question():
