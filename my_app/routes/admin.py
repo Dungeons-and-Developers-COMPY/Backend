@@ -112,15 +112,18 @@ def get_tag_overview():
             func.sum(cast(QuestionStat.data.op('->>')('passed'), Integer)).label("total_passed")
         ).group_by(QuestionStat.tag).all()
 
-        result = [
-            {
+        result = []
+        for tag, attempts, passed in stats:
+            attempts = attempts or 0
+            passed = passed or 0
+            pass_rate = round((passed / attempts * 100), 2) if attempts else 0.0
+
+            result.append({
                 "tag": tag,
-                "total_attempts": int(attempts or 0),
-                "total_passed": int(passed or 0),
-                "pass_rate": round((passed / attempts * 100), 2) if attempts else 0.0,
-            }
-            for tag, attempts, passed in stats
-        ]
+                "total_attempts": int(attempts),
+                "total_passed": int(passed),
+                "pass_rate": pass_rate
+            })
 
         return jsonify(result)
 
@@ -129,6 +132,7 @@ def get_tag_overview():
         current_app.logger.error("❌ Error generating stats: %s", str(e))
         current_app.logger.debug(traceback.format_exc())
         return jsonify({"error": "Failed to generate stats"}), 500
+
 
 @bp.route("/question-pass-stats", methods=["GET"])
 def get_all_question_pass_stats():
