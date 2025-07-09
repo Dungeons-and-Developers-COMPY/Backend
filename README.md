@@ -6,24 +6,9 @@ LOG INTO UCT VPN FIRST!!!
 Windows:
 scp -r Backend abdibr008@dnd-vm-1.cs.uct.ac.za:
 
-## Running code
-For your first time running the files do the following
-
-Install the following two applications:
-
-1.) Docker
-
+## Running code on the server
 ```Python
-https://www.docker.com/products/docker-desktop/
-```
-
-2.) PostgreSQL
-```Python
-https://www.enterprisedb.com/downloads/postgres-postgresql-downloads
-```
-
-Once docker is installed, your computer will restart and will be able to run the following command after "cd Backend"
-```Python
+cd Backend
 docker-compose up --build
 ```
 On the UCT server launch in detached mode (-d) so it runs after the window is closed.
@@ -32,7 +17,7 @@ sudo docker compose up -d
 ```
 Acess the admin portal through the following link:
 ```Python
-http://127.0.0.1:5000/admin
+http://http://137.158.61.244:5000/admin
 ```
 
 ## API 
@@ -40,6 +25,7 @@ http://127.0.0.1:5000/admin
 There are several API endpoints where you can get information from the database.
 
 ### 1.) Send Submission Attempt to server (POST)
+Code submissions have to be made with the use of a function (func). The paramter can be anything. 
 #### Input
 ```Python
 import requests
@@ -77,8 +63,34 @@ except Exception:
 OR
 {'error': 'Invalid credentials'}
 ```
+### 2.) Get a random question for a difficulty (Easy, Medium, Hard) (GET)
+#### Input
+```Python
+import requests
 
-### 2.) Get submission statistics for a particular question (GET)
+
+difficulty = 'Easy'
+url = f"http://localhost:5000/questions/random/{difficulty}"
+
+auth = ("Admin_Username", "Admin_Password!")
+
+response = requests.get(url, auth=auth)
+
+try:
+    print(response.json())
+except Exception:
+    print("Non-JSON response received:")
+    print("Status code:", response.status_code)
+    print("Raw response:", response.text)
+```
+#### Output
+```Python
+{'difficulty': 'easy', 'id': 1, 'prompt_md': 'Print the following pyramid of stars:\n*\n**\n***\n****\n*****', 'question_number': 1, 'tags': 'loop,print', 'test_cases': '[\n  {\n    "input": "",\n    "output": "*\\n**\\n***\\n****\\n*****"\n  }\n]\n', 'title': 'Pyramid of Stars'}
+OR
+{'error': 'Invalid credentials'}
+```
+
+### 3.) Get submission statistics for a particular question (GET)
 #### Input
 ```Python
 import requests
@@ -104,32 +116,5 @@ OR
 {'error': 'Invalid credentials'}
 ```
 
-
-### 3.) Get a random question for a difficulty (Easy, Medium, Hard) (GET)
-#### Input
-```Python
-import requests
-
-
-difficulty = 'Easy'
-url = f"http://localhost:5000/questions/random/{difficulty}"
-
-auth = ("Ibrahim", "Dnd4ever!")
-
-response = requests.get(url, auth=auth)
-
-try:
-    print(response.json())
-except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
-```
-#### Output
-```Python
-{'difficulty': 'easy', 'id': 1, 'prompt_md': 'Print the following pyramid of stars:\n*\n**\n***\n****\n*****', 'question_number': 1, 'tags': 'loop,print', 'test_cases': '[\n  {\n    "input": "",\n    "output": "*\\n**\\n***\\n****\\n*****"\n  }\n]\n', 'title': 'Pyramid of Stars'}
-OR
-{'error': 'Invalid credentials'}
-```
 
 
