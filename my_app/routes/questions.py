@@ -11,6 +11,7 @@ import os
 from flask import g
 from base64 import b64decode
 
+
 bp = Blueprint('questions', __name__)
 
 @bp.before_request
@@ -97,6 +98,23 @@ def get_questions():
         "test_cases": q.test_cases
     } for q in questions]
     return jsonify(questions_list)
+
+@bp.route("/admin/<int:question_id>", methods=["GET"])
+def get_question_page(question_id):
+    question = Question.query.get(question_id)
+    if not question:
+        return jsonify({"error": "Question not found"}), 404
+
+    return jsonify({
+        "id": question.id,
+        "title": question.title,
+        "prompt_md": question.prompt_md,
+        "difficulty": question.difficulty,
+        "tags": question.tags,
+        "question_number": question.question_number,
+        "test_cases": question.test_cases
+    })
+
 
 @bp.route("/<int:question_id>", methods=["DELETE"])
 def delete_question(question_id):
@@ -233,7 +251,6 @@ def evaluate_and_record_stats(question_number):
         }), 200
 
 
-
 @bp.route("/stats/<int:question_number>", methods=["GET"])
 def get_question_stats(question_number):
     question = Question.query.filter_by(question_number=question_number).first()
@@ -253,8 +270,6 @@ def get_question_stats(question_number):
         })
 
     return jsonify(result)
-
-
 
 
 @bp.route("/stats/reset", methods=["DELETE"])

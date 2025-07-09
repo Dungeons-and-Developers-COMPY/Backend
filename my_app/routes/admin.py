@@ -1,9 +1,13 @@
-from models import Question, db, User
+from models import Question, db, User, QuestionStat
 from flask import Blueprint, request, jsonify, send_from_directory, current_app,abort
 from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.security import check_password_hash
 import os
 from flask import make_response
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import cast, Integer
+from sqlalchemy import func, text
+import traceback
 
 bp = Blueprint('admin', __name__)
 
@@ -16,7 +20,6 @@ def restrict_to_admins():
 
     if not current_user.is_authenticated:
         return current_app.login_manager.unauthorized()
-
     if current_user.role != "admin":
         abort(403)
         
@@ -99,6 +102,57 @@ def list_questions():
     ]
     return jsonify(data)
 
+
+@bp.route("/overview", methods=["GET"])
+def get_tag_overview():
+    try:
+        stats = db.session.query(
+            QuestionStat.tag,
+            func.sum(cast(QuestionStat.data.op('->>')('attempts'), Integer)).label("total_attempts"),
+            func.sum(cast(QuestionStat.data.op('->>')('passed'), Integer)).label("total_passed")
+        ).group_by(QuestionStat.tag).all()
+
+        result = [
+            {
+                "tag": tag,
+                "total_attempts": int(attempts or 0),
+                "total_passed": int(passed or 0),
+                "pass_rate": round((passed / attempts * 100), 2) if attempts else 0.0,
+            }
+            for tag, attempts, passed in stats
+        ]
+
+        return jsonify(result)
+
+    except Exception as e:
+        import traceback
+        current_app.logger.error("❌ Error generating stats: %s", str(e))
+        current_app.logger.debug(traceback.format_exc())
+        return jsonify({"error": "Failed to generate stats"}), 500
+
+@bp.route("/question-pass-stats", methods=["GET"])
+def get_all_question_pass_stats():
+    questions = Question.query.all()
+    results = []
+
+    for q in questions:
+        stats = QuestionStat.query.filter_by(question_id=q.id).all()
+        total_attempts = 0
+        total_passed = 0
+
+        for stat in stats:
+            total_attempts += stat.data.get("attempts", 0)
+            total_passed += stat.data.get("passed", 0)
+
+        pass_rate = (total_passed / total_attempts * 100) if total_attempts > 0 else 0
+
+        results.append({
+            "id": q.id,
+            "title": q.title,
+            "pass_rate": round(pass_rate, 2)
+        })
+
+    return jsonify(results)
 
 @bp.route("/login", methods=["POST"])
 def login():
