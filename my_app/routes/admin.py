@@ -1,20 +1,21 @@
 from models import Question, db, User, QuestionStat
-from flask import Blueprint, request, jsonify, send_from_directory, current_app,abort
+from flask import Blueprint, request, jsonify, send_from_directory, current_app, abort, make_response
 from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.security import check_password_hash
-import os
-from flask import make_response
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import cast, Integer
-from sqlalchemy import func, text
+from sqlalchemy import cast, Integer, func, text
+import os
 import traceback
 
 bp = Blueprint('admin', __name__)
 
-# 🔒 Global guard for all admin routes
+# ------------------ Global Admin Route Guard ------------------
 @bp.before_request
 def restrict_to_admins():
-    # Don't require login on these routes
+    """
+    Restricts access to all admin routes except login and auth check.
+    Ensures user is authenticated and has admin role.
+    """
     if request.endpoint in ('admin.login', 'admin.check_auth'):
         return
 
@@ -22,9 +23,13 @@ def restrict_to_admins():
         return current_app.login_manager.unauthorized()
     if current_user.role != "admin":
         abort(403)
-        
+
+# ------------------ Authentication Check Endpoint ------------------
 @bp.route("/check-auth", methods=["GET"])
 def check_auth():
+    """
+    Returns the current user's authentication and role info.
+    """
     if current_user.is_authenticated:
         return jsonify({
             "username": current_user.username,
@@ -32,8 +37,14 @@ def check_auth():
         })
     return jsonify({"error": "Not authenticated"}), 401
 
+# ------------------ User Management (Admin Panel) ------------------
 @bp.route("/manage", methods=["GET", "POST"])
 def manage_users():
+    """
+    GET: Lists all users.
+    POST: Creates a new user (admin or regular).
+    Access is only granted if ENABLE_ADMIN is True in config.
+    """
     if not current_app.config.get("ENABLE_ADMIN"):
         return jsonify({"error": "Admin panel is disabled"}), 403
 
@@ -56,16 +67,19 @@ def manage_users():
         db.session.commit()
         return jsonify({"message": "User created", "user_id": user.id}), 201
 
-    # GET request: list users
     users = User.query.all()
     return jsonify([
         {"id": u.id, "username": u.username, "role": u.role}
         for u in users
     ])
 
-
+# ------------------ Add New Admin User ------------------
 @bp.route('/add-admin', methods=['POST'])
 def add_admin():
+    """
+    Creates a new admin user.
+    Returns error if username already exists.
+    """
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -79,16 +93,20 @@ def add_admin():
 
     try:
         new_admin = User(username=username, role="admin")
-        new_admin.set_password(password) # Assuming set_password hashes the password
+        new_admin.set_password(password)
         db.session.add(new_admin)
         db.session.commit()
         return jsonify({"message": f"Admin user '{username}' created successfully", "id": new_admin.id}), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Failed to create admin: {str(e)}"}), 500
-    
+
+# ------------------ List All Questions ------------------
 @bp.route('/questions')
 def list_questions():
+    """
+    Returns a list of all questions with metadata.
+    """
     questions = Question.query.all()
     data = [
         {
@@ -102,9 +120,13 @@ def list_questions():
     ]
     return jsonify(data)
 
-
+# ------------------ Stats Overview By Tag ------------------
 @bp.route("/overview", methods=["GET"])
 def get_tag_overview():
+    """
+    Aggregates total attempts and pass counts per tag.
+    Returns pass rates for each tag.
+    """
     try:
         stats = db.session.query(
             QuestionStat.tag,
@@ -128,14 +150,17 @@ def get_tag_overview():
         return jsonify(result)
 
     except Exception as e:
-        import traceback
-        current_app.logger.error("❌ Error generating stats: %s", str(e))
+        current_app.logger.error("Error generating stats: %s", str(e))
         current_app.logger.debug(traceback.format_exc())
         return jsonify({"error": "Failed to generate stats"}), 500
 
-
+# ------------------ Question-Specific Pass Stats ------------------
 @bp.route("/question-pass-stats", methods=["GET"])
 def get_all_question_pass_stats():
+    """
+    Returns pass rates per question.
+    Iterates through QuestionStats to compute stats for each question.
+    """
     questions = Question.query.all()
     results = []
 
@@ -158,9 +183,13 @@ def get_all_question_pass_stats():
 
     return jsonify(results)
 
+# ------------------ Admin Login ------------------
 @bp.route("/login", methods=["POST"])
 def login():
-
+    """
+    Authenticates admin user and logs them in via Flask-Login.
+    Checks for valid credentials and correct admin role.
+    """
     data = request.get_json()
     username = data.get("username")
     password = data.get("password")
@@ -178,16 +207,18 @@ def login():
 
     login_user(user)
 
-    # ⬇️ Return all required info in one go
     return jsonify({
         "message": "Logged in successfully",
         "username": user.username,
         "role": user.role
     })
 
-
+# ------------------ Admin Logout ------------------
 @bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
+    """
+    Logs out the current user.
+    """
     logout_user()
     return jsonify({"message": "Logged out"})
