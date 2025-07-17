@@ -1,5 +1,5 @@
 import os
-from flask import Flask, send_from_directory, current_app
+from flask import Flask, send_from_directory, current_app, request
 from flask_migrate import Migrate
 from models import db, User
 from flask_login import LoginManager, login_required, current_user
@@ -11,11 +11,25 @@ load_dotenv()
 # Initialize extensions
 migrate = Migrate()
 login_manager = LoginManager()
+from datetime import timedelta
 
 def create_app():
     # ------------------ Flask App Setup ------------------
     app = Flask(__name__, static_folder="static/out", static_url_path="")
+    
+    @app.before_request
+    def method_override():
+        if request.method == "POST":
+            override = request.form.get("_method")
+            if override:
+                request.environ["REQUEST_METHOD"] = override.upper()
 
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+    app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+    
     # Load secret key and config
     app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
     app.config.from_object("config.Config")
@@ -25,8 +39,10 @@ def create_app():
     migrate.init_app(app, db)
 
     # ------------------ Login Manager Setup ------------------
+    login_manager = LoginManager()
     login_manager.init_app(app)
-    login_manager.login_view = 'admin.login' 
+    login_manager.login_view = 'admin.login'
+    login_manager.session_protection = 'strong' 
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -36,11 +52,12 @@ def create_app():
         return User.query.get(int(user_id))
 
     # ------------------ Register Blueprints ------------------
-    from my_app.routes.questions import bp as question_bp
-    app.register_blueprint(question_bp, url_prefix="/questions")
-
+    
     from my_app.routes.admin import bp as admin_api_bp
     app.register_blueprint(admin_api_bp, url_prefix="/admin")
+    
+    from my_app.routes.questions import qbp as question_bp
+    app.register_blueprint(question_bp, url_prefix="/questions")
 
     from my_app.routes.student import student_bp
     app.register_blueprint(student_bp, url_prefix="/student")

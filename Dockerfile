@@ -14,8 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set environment variables to enable Flask auto reload
+ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=my_app
-ENV FLASK_ENV=development
+ENV FLASK_ENV=production 
 
 # Run Flask app with reload enabled
 CMD ["flask", "run", "--host=0.0.0.0", "--reload"]
