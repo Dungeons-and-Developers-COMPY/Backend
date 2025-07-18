@@ -31,7 +31,7 @@ Code submissions have to be made with the use of a function (func). The paramter
 import requests
 
 question_number = 3
-url = f"http://localhost:5000/questions/stats/{question_number}"
+url = f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/questions/stats/{question_number}"
 
 # Code to be tested against the test cases
 code_submission = """
@@ -70,7 +70,7 @@ import requests
 
 
 difficulty = 'Easy'
-url = f"http://localhost:5000/questions/random/{difficulty}"
+url = f"https://dungeonsanddevelopers.cs.uct.ac.za/questions/random/{difficulty}"
 
 auth = ("Admin_Username", "Admin_Password!")
 
@@ -96,7 +96,7 @@ OR
 import requests
 
 question_number = 3
-url = f"http://localhost:5000/questions/stats/{question_number}"
+url = f"https://dungeonsanddevelopers.cs.uct.ac.za/questions/stats/{question_number}"
 
 auth = ("Admin_Username", "Admin_Password")
 
