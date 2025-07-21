@@ -4,16 +4,40 @@ from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.security import check_password_hash
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import cast, Integer, func, text
-import os, json
+import os, json, datetime
 import traceback
 import ast
 import logging
-
+import traceback
+import io
+import contextlib
+    
 bp = Blueprint('admin', __name__)
 
-# ------------------ Global Admin Route Guard ------------------
+
 logger = logging.getLogger(__name__)
 
+def log_submission_error(question_number, user_code, error_type, error_message, failed_case=None, tb=None):
+    log_dir = "logs"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"question_{question_number}_errors.txt")  # fixed file per question
+
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with open(log_file, "a", encoding="utf-8") as f:  # append mode
+        f.write(f"[{timestamp}] Error Type: {error_type}\n")
+        if failed_case:
+            f.write(f"Failed Test Case: {failed_case}\n")
+        f.write(f"Error Message: {error_message}\n")
+        if tb:
+            f.write("Traceback:\n")
+            f.write(tb)
+        f.write("User Code:\n")
+        f.write(user_code)
+        f.write("\n" + "-"*60 + "\n\n")
+
+        
+# ------------------ Global Admin Route Guard ------------------    
 @bp.before_request
 def restrict_to_admins():
     """
@@ -28,7 +52,10 @@ def restrict_to_admins():
         'admin.debug_session',  # Fixed: was 'admin.debug-session'
         'admin.debug_full',     # Fixed: was 'admin.debug-full'
         'admin.test_post',     # Fixed: was 'admin.debug-full'
-        'admin.evaluate_and_record_stats'  # This should be public for code submissions
+        'admin.evaluate_and_record_stats',  # This should be public for code submissions
+        'admin.get_tag_overview',
+        'admin.get_all_question_pass_stats',
+        'admin.run_code'
     ]
     
     # Allow OPTIONS requests for CORS
@@ -40,7 +67,7 @@ def restrict_to_admins():
         return
     
     # Check session first
-    user_id = session.get('_user_id')
+    user_id = session.get('user_id')
     logger.info(f"Session user_id: {user_id}")
     logger.info(f"Session keys: {list(session.keys())}")
     
@@ -63,37 +90,6 @@ def restrict_to_admins():
     
     logger.info("Admin access granted")
 
-
-@bp.route("/admin/test-post", methods=["POST"])
-def test_post():
-    return "POST OK", 200
-
-@bp.route("/debug-session", methods=["GET"])
-def debug_session():
-    """
-    Debug session and authentication state
-    """
-    return jsonify({
-        "flask_login": {
-            "is_authenticated": current_user.is_authenticated,
-            "user_id": getattr(current_user, 'id', None),
-            "username": getattr(current_user, 'username', None),
-            "role": getattr(current_user, 'role', None),
-            "is_active": getattr(current_user, 'is_active', None),
-            "is_anonymous": getattr(current_user, 'is_anonymous', None)
-        },
-        "session": {
-            "keys": list(session.keys()),
-            "data": dict(session),
-            "permanent": session.permanent
-        },
-        "request": {
-            "endpoint": request.endpoint,
-            "method": request.method,
-            "path": request.path,
-            "cookies": dict(request.cookies)
-        }
-    })
 
 @bp.route("/debug-full", methods=["GET"])
 def debug_full():
@@ -127,6 +123,223 @@ def debug_full():
     
     return jsonify(debug_info)
 
+import traceback
+import ast
+
+@bp.route("/run-code", methods=["POST"])
+def run_code():
+    """
+    Executes submitted code and returns the return value from func().
+    Accepts optional 'input' as a string to pass to func().
+    """
+    data = request.get_json(silent=True)
+    if not data or "code" not in data:
+        return jsonify({"error": "Missing 'code' in request body"}), 400
+
+    user_code = data["code"]
+    input_value = data.get("input")
+
+    exec_env = {}
+
+    try:
+        compile(user_code, "<string>", "exec")
+    except SyntaxError as e:
+        return jsonify({
+            "success": False,
+            "error": f"SyntaxError: {str(e)}",
+            "traceback": traceback.format_exc()
+        }), 400
+
+    try:
+        exec(user_code, exec_env)
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Runtime error during exec: {str(e)}",
+            "traceback": traceback.format_exc()
+        }), 400
+
+    func = exec_env.get("func")
+    if not callable(func):
+        return jsonify({
+            "success": False,
+            "error": "Function 'func' not found"
+        }), 400
+
+    try:
+        if input_value:
+            try:
+                parsed_input = ast.literal_eval(input_value)
+            except Exception:
+                parsed_input = input_value
+            result = func(parsed_input)
+        else:
+            result = func()
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Error while calling func(): {str(e)}",
+            "traceback": traceback.format_exc()
+        }), 400
+
+    return jsonify({
+        "success": True,
+        "result": result
+    }), 200
+
+
+# ------------------ Submit Code and Record Stats ------------------
+@bp.route("/questions/stats/<int:question_number>", methods=["POST"])
+def evaluate_and_record_stats(question_number):
+    """
+    Accepts user code, evaluates it against test cases, and records attempt/pass stats.
+    Logs detailed errors to file.
+    """
+    data = request.get_json(silent=True)
+    if not data or "code" not in data:
+        return jsonify({"error": "Missing JSON body or 'code' field"}), 400
+    user_code = data["code"]
+
+    question = Question.query.filter_by(question_number=question_number).first()
+    if not question:
+        return jsonify({"error": f"Question {question_number} not found"}), 404
+
+    try:
+        test_cases = json.loads(question.test_cases or "[]")
+    except json.JSONDecodeError as e:
+        return jsonify({"error": "Invalid test case format", "details": str(e)}), 500
+
+    exec_env = {}
+
+    try:
+        # Try compiling the code first to catch syntax errors upfront
+        compile(user_code, "<string>", "exec")
+    except SyntaxError as e:
+        tb = traceback.format_exc()
+        log_submission_error(
+            question_number,
+            user_code,
+            error_type="SyntaxError",
+            error_message=str(e),
+            tb=tb
+        )
+        return jsonify({
+            "success": False,
+            "error": f"Code compilation error (SyntaxError): {str(e)}",
+            "traceback": tb
+        }), 400
+    except Exception as e:
+        tb = traceback.format_exc()
+        log_submission_error(
+            question_number,
+            user_code,
+            error_type="CompilationError",
+            error_message=str(e),
+            tb=tb
+        )
+        return jsonify({
+            "success": False,
+            "error": f"Code compilation error: {str(e)}",
+            "traceback": tb
+        }), 400
+
+    try:
+        exec(user_code, exec_env)
+    except Exception as e:
+        tb = traceback.format_exc()
+        log_submission_error(
+            question_number,
+            user_code,
+            error_type="RuntimeErrorOnExec",
+            error_message=str(e),
+            tb=tb
+        )
+        return jsonify({
+            "success": False,
+            "error": f"Runtime error during code execution: {str(e)}",
+            "traceback": tb
+        }), 400
+
+    func = exec_env.get("func")
+    if not callable(func):
+        error_msg = "Function 'func' not found in submitted code."
+        log_submission_error(
+            question_number,
+            user_code,
+            error_type="MissingFunction",
+            error_message=error_msg,
+        )
+        return jsonify({"success": False, "error": error_msg}), 400
+
+    for case in test_cases:
+        raw_input_data = case["input"]
+        expected_output = case["output"]
+
+        try:
+            parsed_input = ast.literal_eval(raw_input_data)
+        except Exception:
+            parsed_input = raw_input_data  # fallback to string
+
+        try:
+            result = func(parsed_input)
+            result_str = str(result).strip()
+        except Exception as e:
+            error_msg = str(e)
+            tb = traceback.format_exc()
+            log_submission_error(
+                question_number,
+                user_code,
+                error_type="RuntimeError",
+                error_message=error_msg,
+                failed_case=case,
+                tb=tb
+            )
+            return jsonify({
+                "success": False,
+                "error": f"Code runtime error: {error_msg}",
+                "traceback": tb,
+                "failed_case": case
+            }), 200
+
+        if result_str != expected_output.strip():
+            error_msg = f"Expected: {expected_output.strip()}, Got: {result_str}"
+            log_submission_error(
+                question_number,
+                user_code,
+                error_type="WrongOutput",
+                error_message=error_msg,
+                failed_case=case
+            )
+            return jsonify({
+                "success": False,
+                "message": "At least one test case failed.",
+                "failed_case": case,
+                "expected": expected_output.strip(),
+                "got": result_str,
+                "question_number": question_number
+            }), 200
+
+    # All test cases passed, update stats
+    tags = (question.tags or "").split(",")
+    for tag in tags:
+        tag = tag.strip()
+        if not tag:
+            continue
+        stat = QuestionStat.query.filter_by(question_id=question.id, tag=tag).first()
+        if not stat:
+            stat = QuestionStat(question_id=question.id, tag=tag, data={})
+            db.session.add(stat)
+        stat.bump(passed=True)
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "All test cases passed!",
+        "question_number": question_number
+    }), 200
+
+        
 # ------------------ Authentication Check Endpoint ------------------
 @bp.route("/check-auth", methods=["GET"])
 def check_auth():
@@ -386,109 +599,6 @@ def update_question(question_id):
 
     db.session.commit()
     return jsonify({"message": "Question updated"})
-
-
-# ------------------ Submit Code and Record Stats ------------------
-@bp.route("/questions/stats/<int:question_number>", methods=["POST"])
-def evaluate_and_record_stats(question_number):
-    """
-    Accepts user code, evaluates against test cases, and records attempt/pass stats.
-    """
-    data = request.get_json(silent=True)
-    if not data or "code" not in data:
-        return jsonify({"error": "Missing JSON body or 'code' field"}), 400
-    user_code = data["code"]
-
-    question = Question.query.filter_by(question_number=question_number).first()
-    if not question:
-        return jsonify({"error": f"Question {question_number} not found"}), 404
-
-    try:
-        test_cases = json.loads(question.test_cases or "[]")
-    except json.JSONDecodeError as e:
-        return jsonify({"error": "Invalid test case format", "details": str(e)}), 500
-
-    all_passed = True
-    failed_case = None
-    error_occurred = False
-    error_msg = ""
-
-    # Setup isolated environment
-    exec_env = {}
-
-    try:
-        exec(user_code, exec_env)
-    except Exception as e:
-        return jsonify({"success": False, "error": f"Code compilation error: {str(e)}"}), 200
-
-    func = exec_env.get("func")
-    if not callable(func):
-        return jsonify({
-            "success": False,
-            "error": "Function 'func' not found in submitted code."
-        }), 200
-
-    for case in test_cases:
-        raw_input_data = case["input"]
-        expected_output = case["output"]
-
-        try:
-            parsed_input = ast.literal_eval(raw_input_data)
-        except Exception:
-            parsed_input = raw_input_data  # fallback
-
-        try:
-            result = func(parsed_input)
-            result_str = str(result).strip()
-
-            if result_str != expected_output.strip():
-                all_passed = False
-                failed_case = case
-                break
-        except Exception as e:
-            error_occurred = True
-            error_msg = str(e)
-            failed_case = case
-            all_passed = False
-            break
-
-    # Update per-tag stats
-    tags = (question.tags or "").split(",")
-    for tag in tags:
-        tag = tag.strip()
-        if not tag:
-            continue
-        stat = QuestionStat.query.filter_by(question_id=question.id, tag=tag).first()
-        if not stat:
-            stat = QuestionStat(question_id=question.id, tag=tag, data={})
-            db.session.add(stat)
-        stat.bump(passed=all_passed)
-
-    db.session.commit()
-
-    # Final response
-    if error_occurred:
-        return jsonify({
-            "success": False,
-            "error": f"Code runtime error: {error_msg}",
-            "failed_case": failed_case
-        }), 200
-
-    if all_passed:
-        return jsonify({
-            "success": True,
-            "message": "All test cases passed!",
-            "question_number": question_number
-        }), 200
-    else:
-        return jsonify({
-            "success": False,
-            "message": "At least one test case failed.",
-            "failed_case": failed_case,
-            "expected": expected_output,
-            "got": result_str,
-            "question_number": question_number
-        }), 200
         
         
 # ------------------ Reset All Question Stats ------------------
