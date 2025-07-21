@@ -24,8 +24,42 @@ http://http://137.158.61.244:5000/admin
 
 There are several API endpoints where you can get information from the database.
 
-### 1.) Send Submission Attempt to server (POST)
-Code submissions have to be made with the use of a function (func). The paramter can be anything. 
+### 1.) Run Python code before final submission (POST)
+Code submissions have to be made with the use of a function (func). The parameter can be anything. 
+#### Input
+```Python
+import requests
+
+url = "https://dungeonsanddevelopers.cs.uct.ac.za/admin/run-code"
+
+payload = {
+    "code": """
+def func(word):
+    return word[::-1]
+""",
+    "input": "'hello'"
+}
+
+response = requests.post(url, json=payload)
+
+try:
+    data = response.json()
+    if data.get("success"):
+        print("Returned value from func():", data["result"])
+    else:
+        print("Execution failed:", data.get("error"))
+except Exception:
+    print("Invalid response")
+    print(response.status_code)
+    print(response.text)
+```
+#### Output
+```Python
+Returned value from func(): olleh
+```
+
+### 2.) Send Final Submission Attempt to server (POST)
+Code submissions have to be made with the use of a function (func). The parameter can be anything. 
 #### Input
 ```Python
 import requests
@@ -63,7 +97,7 @@ except Exception:
 OR
 {'error': 'Invalid credentials'}
 ```
-### 2.) Get a random question for a difficulty (Easy, Medium, Hard) (GET)
+### 3.) Get a random question for a difficulty (Easy, Medium, Hard) (GET)
 #### Input
 ```Python
 import requests
@@ -90,7 +124,7 @@ OR
 {'error': 'Invalid credentials'}
 ```
 
-### 3.) Get submission statistics for a particular question (GET)
+### 4.) Get submission statistics for a particular question (GET)
 #### Input
 ```Python
 import requests
