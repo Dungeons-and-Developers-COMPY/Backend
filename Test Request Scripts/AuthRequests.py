@@ -1,24 +1,26 @@
 import requests
 
-url = "https://dungeonsanddevelopers.cs.uct.ac.za/admin/run-code"
+question_number = 2
+url = f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/questions/stats/{question_number}"
+
+# Code to be tested against the test cases
+code_submission = r"""
+def func(word):
+    answer = ""
+    for i in range(5, 0, -1):
+        answer += "*" * i + "\n"
+    return answer
+"""
 
 payload = {
-    "code": """
-def func(word):
-    return word[::
-""",
-    "input": "'hello'"
+    "code": code_submission
 }
 
 response = requests.post(url, json=payload)
 
 try:
-    data = response.json()
-    if data.get("success"):
-        print("Returned value from func():", data["result"])
-    else:
-        print("Execution failed:", data.get("error"))
+    print(response.json())
 except Exception:
-    print("Invalid response")
-    print(response.status_code)
-    print(response.text)
+    print("Non-JSON response received:")
+    print("Status code:", response.status_code)
+    print("Raw response:", response.text)

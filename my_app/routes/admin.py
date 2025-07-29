@@ -11,7 +11,9 @@ import logging
 import traceback
 import io
 import contextlib
-    
+import urllib 
+import re
+
 bp = Blueprint('admin', __name__)
 
 
@@ -49,10 +51,10 @@ def restrict_to_admins():
     public_endpoints = [
         'admin.login', 
         'admin.check_auth', 
-        'admin.debug_session',  # Fixed: was 'admin.debug-session'
-        'admin.debug_full',     # Fixed: was 'admin.debug-full'
-        'admin.test_post',     # Fixed: was 'admin.debug-full'
-        'admin.evaluate_and_record_stats',  # This should be public for code submissions
+        'admin.debug_session',  
+        'admin.debug_full',     
+        'admin.test_post',     
+        'admin.evaluate_and_record_stats',  
         'admin.get_tag_overview',
         'admin.get_all_question_pass_stats',
         'admin.run_code'
@@ -272,8 +274,22 @@ def evaluate_and_record_stats(question_number):
         return jsonify({"success": False, "error": error_msg}), 400
 
     for case in test_cases:
+        if "input" not in case or ("output" not in case and "expected_output" not in case):
+            log_submission_error(
+                question_number,
+                user_code,
+                error_type="InvalidTestCase",
+                error_message="Test case missing 'input' and 'output'/'expected_output'",
+                failed_case=case,
+            )
+            return jsonify({
+                "success": False,
+                "error": "Invalid test case: missing 'input' and 'output'/'expected_output'",
+                "failed_case": case,
+            }), 500
+
         raw_input_data = case["input"]
-        expected_output = case["output"]
+        expected_output = case.get("output", case.get("expected_output", "")).strip()
 
         try:
             parsed_input = ast.literal_eval(raw_input_data)
@@ -507,28 +523,51 @@ def list_questions():
 @bp.route("/overview", methods=["GET"])
 def get_tag_overview():
     """
-    Aggregates total attempts and pass counts per tag.
-    Returns pass rates for each tag.
+    Combines all tags found in `question.tags` and `question_stat`,
+    then aggregates attempts/pass counts for each tag.
+    Returns pass rates per tag, defaulting to 0 if no stats exist.
     """
     try:
-        stats = db.session.query(
+        # Step 1: Get all tags from the `question_stat` table
+        stat_rows = db.session.query(
             QuestionStat.tag,
             func.sum(cast(QuestionStat.data.op('->>')('attempts'), Integer)).label("total_attempts"),
             func.sum(cast(QuestionStat.data.op('->>')('passed'), Integer)).label("total_passed")
         ).group_by(QuestionStat.tag).all()
 
-        result = []
-        for tag, attempts, passed in stats:
+        stats_map = {}
+        for tag, attempts, passed in stat_rows:
             attempts = attempts or 0
             passed = passed or 0
-            pass_rate = round((passed / attempts * 100), 2) if attempts else 0.0
-
-            result.append({
+            stats_map[tag.lower()] = {
                 "tag": tag,
                 "total_attempts": int(attempts),
                 "total_passed": int(passed),
-                "pass_rate": pass_rate
-            })
+                "pass_rate": round((passed / attempts * 100), 2) if attempts else 0.0
+            }
+
+        # Step 2: Extract all tags from `question.tags` (comma-separated)
+        raw_tags = db.session.execute(text("SELECT tags FROM question WHERE tags IS NOT NULL AND TRIM(tags) != ''"))
+        question_tags = set()
+
+        for row in raw_tags:
+            tag_list = [t.strip() for t in row[0].split(',') if t.strip()]
+            for t in tag_list:
+                question_tags.add(t)
+
+        # Step 3: Ensure all tags are present in the output
+        result = []
+        for tag in sorted(question_tags, key=str.lower):
+            lower_tag = tag.lower()
+            if lower_tag in stats_map:
+                result.append(stats_map[lower_tag])
+            else:
+                result.append({
+                    "tag": tag,
+                    "total_attempts": 0,
+                    "total_passed": 0,
+                    "pass_rate": 0.0
+                })
 
         return jsonify(result)
 
@@ -600,7 +639,113 @@ def update_question(question_id):
     db.session.commit()
     return jsonify({"message": "Question updated"})
         
+
+@bp.route('/delete-tag/<tag_name>', methods=['POST', 'DELETE'])
+def delete_tag(tag_name):
+    """
+    Delete a tag using SQLAlchemy - handles both POST with _method=DELETE and actual DELETE requests
+    """
+    try:
+        tag_name = urllib.parse.unquote(tag_name).lower()
         
+        # Accept both actual DELETE requests and POST with _method=DELETE
+        is_delete_request = (
+            request.method == 'DELETE' or 
+            request.form.get('_method') == 'DELETE'
+        )
+        
+        if is_delete_request:
+            
+            try:
+                # Use raw SQL with SQLAlchemy for better control
+                # First, count affected questions
+                result = db.session.execute(
+                    text("SELECT COUNT(*) FROM question WHERE tags ILIKE :tag_pattern"),
+                    {"tag_pattern": f'%{tag_name}%'}
+                )
+                affected_count = result.scalar()
+                
+                if affected_count == 0:
+                    return jsonify({
+                        'success': True,
+                        'message': f'Tag "{tag_name}" was not found in any questions.'
+                    })
+                
+                # For SQLite (if you're using SQLite instead of PostgreSQL)
+                if 'sqlite' in str(db.engine.url):
+                    # SQLite version - simpler approach
+                    questions_result = db.session.execute(
+                        text("SELECT id, tags FROM question WHERE tags ILIKE :tag_pattern"),
+                        {"tag_pattern": f'%{tag_name}%'}
+                    )
+                    
+                    for row in questions_result:
+                        question_id, current_tags = row
+                        if current_tags:
+                            # Split tags, remove target tag, rejoin
+                            tag_list = [tag.strip() for tag in current_tags.split(',') if tag.strip()]
+                            updated_tags = [tag for tag in tag_list if tag.lower() != tag_name.lower()]
+                            new_tags_string = ','.join(updated_tags) if updated_tags else ''
+                            
+                            db.session.execute(
+                                text("UPDATE questions SET tags = :new_tags WHERE id = :question_id"),
+                                {"new_tags": new_tags_string, "question_id": question_id}
+                            )
+                
+                else:
+                    # PostgreSQL version - use advanced string functions
+                    db.session.execute(
+                        text("""
+                            UPDATE question
+                            SET tags = TRIM(BOTH ',' FROM REGEXP_REPLACE(
+                                tags,
+                                :regex_pattern,
+                                '',
+                                'gi'
+                            ))
+                            WHERE tags ~* :regex_pattern
+                        """),
+                        {
+                            "regex_pattern": fr"(^|,){re.escape(tag_name)}(?=,|$)"
+                        }
+                    )
+                    
+                    # Clean up trailing/leading commas (PostgreSQL)
+                    db.session.execute(
+                        text("UPDATE question SET tags = TRIM(BOTH ',' FROM tags) WHERE LOWER(tags) ILIKE ',%' OR tags ILIKE '%,'")
+                    )
+                
+                # Clean up empty tags (works for both SQLite and PostgreSQL)
+                db.session.execute(
+                    text("UPDATE question SET tags = '' WHERE LOWER(tags) IS NULL OR TRIM(tags) = ''")
+                )
+                    
+                db.session.query(QuestionStat).filter(
+                    func.lower(QuestionStat.tag) == tag_name
+                ).delete(synchronize_session=False)
+                
+                db.session.commit()
+                
+                return jsonify({
+                    'success': True,
+                    'message': f'Tag "{tag_name}" has been deleted and removed from {affected_count} questions.'
+                })
+                
+            except Exception as e:
+                db.session.rollback()
+                raise e
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid request method'
+            }), 405
+                
+    except Exception as e:
+        print(f"Error deleting tag: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Failed to delete tag: {str(e)}'
+        }), 500
 # ------------------ Reset All Question Stats ------------------
 @bp.route("/questions/stats/reset", methods=["DELETE", "POST"])
 def reset_all_stats():
