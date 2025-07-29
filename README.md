@@ -30,32 +30,37 @@ Code submissions have to be made with the use of a function (func). The paramete
 ```Python
 import requests
 
-url = "https://dungeonsanddevelopers.cs.uct.ac.za/admin/run-code"
+BASE_URL = "http://127.0.0.1:5000/admin"
+QUESTION_NUMBER = 2
+TEST_USERNAME = "NAME HERE"
+TEST_PASSWORD = "PASSWORD HERE"
 
-payload = {
-    "code": """
-def func(word):
-    return word[::-1]
-""",
-    "input": "'hello'"
-}
+# --- Login ---
+login = requests.post(f"{BASE_URL}/login", json={
+    "username": TEST_USERNAME,
+    "password": TEST_PASSWORD
+})
 
-response = requests.post(url, json=payload)
+if login.status_code != 200:
+    print("Login failed:", login.text)
+    exit()
 
-try:
-    data = response.json()
-    if data.get("success"):
-        print("Returned value from func():", data["result"])
-    else:
-        print("Execution failed:", data.get("error"))
-except Exception:
-    print("Invalid response")
-    print(response.status_code)
-    print(response.text)
+cookies = login.cookies
+print("Login successful.")
+
+run_resp = requests.post(f"{BASE_URL}/run-code", json={
+    "code": "def func(x): return x * 2",
+    "input": "10"
+}, cookies=cookies)
+
+print("\nRun Code Result:")
+print(run_resp.json() if run_resp.ok else run_resp.text)
+
+
 ```
 #### Output
 ```Python
-Returned value from func(): olleh
+{'result': 20, 'success': True}
 ```
 
 ### 2.) Send Final Submission Attempt to server (POST)
@@ -64,30 +69,36 @@ Code submissions have to be made with the use of a function (func). The paramete
 ```Python
 import requests
 
-question_number = 3
-url = f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/questions/stats/{question_number}"
+BASE_URL = "http://127.0.0.1:5000/admin"
+QUESTION_NUMBER = 2
+TEST_USERNAME = "NAME HERE"
+TEST_PASSWORD = "PASSWORD HERE!"
 
-# Code to be tested against the test cases
-code_submission = """
-def func(word):
-    return word[::-1]
+code_submission = r"""
+def func(n):
+    return "*****/n****/n***/n**/n*"
 """
 
-payload = {
-    "code": code_submission
-}
+# --- Login ---
+login = requests.post(f"{BASE_URL}/login", json={
+    "username": TEST_USERNAME,
+    "password": TEST_PASSWORD
+})
 
-# Provide your admin username and password here
-auth = ("Admin_Username", "Admin_Password")
+if login.status_code != 200:
+    print("Login failed:", login.text)
+    exit()
 
-response = requests.post(url, json=payload, auth=auth)
+cookies = login.cookies
+print("Login successful.")
 
-try:
-    print(response.json())
-except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
+# --- Submit Code to Stats Endpoint ---
+response = requests.post(f"{BASE_URL}/questions/stats/{QUESTION_NUMBER}",
+                         json={"code": code_submission},
+                         cookies=cookies)
+
+print("\nCode Submission Result:")
+print(response.json() if response.ok else response.text)
 
 ```
 
