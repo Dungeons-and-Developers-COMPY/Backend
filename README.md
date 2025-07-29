@@ -30,7 +30,7 @@ Code submissions have to be made with the use of a function (func). The paramete
 ```Python
 import requests
 
-BASE_URL = "http://127.0.0.1:5000/admin"
+BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za/admin"
 QUESTION_NUMBER = 2
 TEST_USERNAME = "NAME HERE"
 TEST_PASSWORD = "PASSWORD HERE"
@@ -69,7 +69,7 @@ Code submissions have to be made with the use of a function (func). The paramete
 ```Python
 import requests
 
-BASE_URL = "http://127.0.0.1:5000/admin"
+BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za/admin"
 QUESTION_NUMBER = 2
 TEST_USERNAME = "NAME HERE"
 TEST_PASSWORD = "PASSWORD HERE!"
