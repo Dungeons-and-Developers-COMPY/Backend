@@ -4,7 +4,7 @@ LOG INTO UCT VPN FIRST!!!
 
 ## Copy files to server
 Windows:
-scp -r Backend abdibr008@dnd-vm-1.cs.uct.ac.za:
+scp -r Backend/my_app abdibr008@dnd-vm-1.cs.uct.ac.za:
 
 ## Running code on the server
 ```Python
@@ -17,7 +17,7 @@ sudo docker compose up -d
 ```
 Acess the admin portal through the following link:
 ```Python
-http://http://137.158.61.244:5000/admin
+[http://http://137.158.61.244:5000/admin](https://dungeonsanddevelopers.cs.uct.ac.za/admin)
 ```
 
 ## API 
