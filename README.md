@@ -69,42 +69,36 @@ Code submissions have to be made with the use of a function (func). The paramete
 ```Python
 import requests
 
-BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za/admin"
-QUESTION_NUMBER = 2
-TEST_USERNAME = "NAME HERE"
-TEST_PASSWORD = "PASSWORD HERE!"
+session = requests.Session()
 
-code_submission = r"""
-def func(n):
-    return "*****/n****/n***/n**/n*"
-"""
+# Login
+login = session.post(
+    "https://dungeonsanddevelopers.cs.uct.ac.za/admin/login", 
+    json={"username": "NAME HERE", "password": "PASSWORD HERE"}
+)
 
-# --- Login ---
-login = requests.post(f"{BASE_URL}/login", json={
-    "username": TEST_USERNAME,
-    "password": TEST_PASSWORD
-})
+print("Login Status:", login.status_code)
+try:
+    print("Login Response:", login.json())
+except Exception:
+    print("Login Response (raw):", login.text)
 
-if login.status_code != 200:
-    print("Login failed:", login.text)
-    exit()
 
-cookies = login.cookies
-print("Login successful.")
-
-# --- Submit Code to Stats Endpoint ---
-response = requests.post(f"{BASE_URL}/questions/stats/{QUESTION_NUMBER}",
-                         json={"code": code_submission},
-                         cookies=cookies)
-
-print("\nCode Submission Result:")
-print(response.json() if response.ok else response.text)
+question = 5
+response = session.post(
+    f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/submit/{question}",
+    json={"code": r"def func(n): return n"}
+)
+try:
+    print("Response JSON:", response.json())
+except Exception:
+    print("Response Text:", response.text)
 
 ```
 
 #### Output
 ```Python
-{'message': 'All test cases passed!', 'question_number': 3, 'success': True}
+{'message': 'All test cases passed!', 'question_number': 5, 'success': True}
 OR
 {'error': 'Invalid credentials'}
 ```
