@@ -5,7 +5,7 @@ session = requests.Session()
 # Login
 login = session.post(
     "https://dungeonsanddevelopers.cs.uct.ac.za/admin/login", 
-    json={"username": "Ibrahim", "password": "Dnd4Ever!"}
+    json={"username": "", "password": ""}
 )
 
 print("Login Status:", login.status_code)
