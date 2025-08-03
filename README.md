@@ -4,7 +4,7 @@ LOG INTO UCT VPN FIRST!!!
 
 ## Copy files to server
 Windows:
-scp -r Backend abdibr008@dnd-vm-1.cs.uct.ac.za:
+scp -r Backend/my_app abdibr008@dnd-vm-1.cs.uct.ac.za:
 
 ## Running code on the server
 ```Python
@@ -17,7 +17,7 @@ sudo docker compose up -d
 ```
 Acess the admin portal through the following link:
 ```Python
-http://http://137.158.61.244:5000/admin
+[http://http://137.158.61.244:5000/admin](https://dungeonsanddevelopers.cs.uct.ac.za/admin)
 ```
 
 ## API 
@@ -30,32 +30,37 @@ Code submissions have to be made with the use of a function (func). The paramete
 ```Python
 import requests
 
-url = "https://dungeonsanddevelopers.cs.uct.ac.za/admin/run-code"
+BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za/admin"
+QUESTION_NUMBER = 2
+TEST_USERNAME = "NAME HERE"
+TEST_PASSWORD = "PASSWORD HERE"
 
-payload = {
-    "code": """
-def func(word):
-    return word[::-1]
-""",
-    "input": "'hello'"
-}
+# --- Login ---
+login = requests.post(f"{BASE_URL}/login", json={
+    "username": TEST_USERNAME,
+    "password": TEST_PASSWORD
+})
 
-response = requests.post(url, json=payload)
+if login.status_code != 200:
+    print("Login failed:", login.text)
+    exit()
 
-try:
-    data = response.json()
-    if data.get("success"):
-        print("Returned value from func():", data["result"])
-    else:
-        print("Execution failed:", data.get("error"))
-except Exception:
-    print("Invalid response")
-    print(response.status_code)
-    print(response.text)
+cookies = login.cookies
+print("Login successful.")
+
+run_resp = requests.post(f"{BASE_URL}/run-code", json={
+    "code": "def func(x): return x * 2",
+    "input": "10"
+}, cookies=cookies)
+
+print("\nRun Code Result:")
+print(run_resp.json() if run_resp.ok else run_resp.text)
+
+
 ```
 #### Output
 ```Python
-Returned value from func(): olleh
+{'result': 20, 'success': True}
 ```
 
 ### 2.) Send Final Submission Attempt to server (POST)
@@ -64,36 +69,36 @@ Code submissions have to be made with the use of a function (func). The paramete
 ```Python
 import requests
 
-question_number = 3
-url = f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/questions/stats/{question_number}"
+session = requests.Session()
 
-# Code to be tested against the test cases
-code_submission = """
-def func(word):
-    return word[::-1]
-"""
+# Login
+login = session.post(
+    "https://dungeonsanddevelopers.cs.uct.ac.za/admin/login", 
+    json={"username": "NAME HERE", "password": "PASSWORD HERE"}
+)
 
-payload = {
-    "code": code_submission
-}
-
-# Provide your admin username and password here
-auth = ("Admin_Username", "Admin_Password")
-
-response = requests.post(url, json=payload, auth=auth)
-
+print("Login Status:", login.status_code)
 try:
-    print(response.json())
+    print("Login Response:", login.json())
 except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
+    print("Login Response (raw):", login.text)
+
+
+question = 5
+response = session.post(
+    f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/submit/{question}",
+    json={"code": r"def func(n): return n"}
+)
+try:
+    print("Response JSON:", response.json())
+except Exception:
+    print("Response Text:", response.text)
 
 ```
 
 #### Output
 ```Python
-{'message': 'All test cases passed!', 'question_number': 3, 'success': True}
+{'message': 'All test cases passed!', 'question_number': 5, 'success': True}
 OR
 {'error': 'Invalid credentials'}
 ```
