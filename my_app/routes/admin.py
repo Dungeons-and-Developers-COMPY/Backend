@@ -11,22 +11,22 @@ import logging
 import traceback
 import io
 import contextlib
-import urllib 
+import urllib
 import re
+from functools import wraps
 
 bp = Blueprint('admin', __name__)
-
 
 logger = logging.getLogger(__name__)
 
 def log_submission_error(question_number, user_code, error_type, error_message, failed_case=None, tb=None):
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"question_{question_number}_errors.txt")  # fixed file per question
+    log_file = os.path.join(log_dir, f"question_{question_number}_errors.txt")
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    with open(log_file, "a", encoding="utf-8") as f:  # append mode
+    with open(log_file, "a", encoding="utf-8") as f:
         f.write(f"[{timestamp}] Error Type: {error_type}\n")
         if failed_case:
             f.write(f"Failed Test Case: {failed_case}\n")
@@ -38,59 +38,99 @@ def log_submission_error(question_number, user_code, error_type, error_message, 
         f.write(user_code)
         f.write("\n" + "-"*60 + "\n\n")
 
-        
-# ------------------ Global Admin Route Guard ------------------    
-@bp.before_request
-def restrict_to_admins():
+# ------------------ Custom Role Required Decorator ------------------
+def role_required(roles):
     """
-    Fixed admin route guard with proper session handling
+    Decorator to restrict access to certain roles.
+    `roles` can be a single string (e.g., "admin") or a list of strings (e.g., ["admin", "student"]).
+    """
+    if not isinstance(roles, (list, tuple)):
+        roles = [roles]
+
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return jsonify({"error": "Authentication required"}), 401
+            if not hasattr(current_user, 'role') or current_user.role not in roles:
+                # Log this attempt to help debugging
+                logger.warning(f"Access denied for user {current_user.username} (role: {current_user.role}) trying to access {request.endpoint}. Required roles: {roles}")
+                return jsonify({"error": f"Access denied: Requires one of {', '.join(roles)} roles"}), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+# ------------------ Global Before Request Handler ------------------
+@bp.before_request
+def check_access_control():
+    """
+    This handler will manage global access control.
+    It should allow certain routes (login, check_auth, debug) to pass without
+    any role check, and for other routes, it will enforce either login
+    or specific roles based on the decorators on the route functions themselves.
     """
     logger.info(f"Request: {request.method} {request.path}")
     logger.info(f"Endpoint: {request.endpoint}")
-    
-    public_endpoints = [
-        'admin.login', 
-        'admin.check_auth', 
-        'admin.debug_session',  
-        'admin.debug_full',     
-        'admin.test_post',     
-        'admin.evaluate_and_record_stats',  
-        'admin.get_tag_overview',
-        'admin.get_all_question_pass_stats',
-        'admin.run_code'
-    ]
-    
-    # Allow OPTIONS requests for CORS
+
+    # Allow OPTIONS requests for CORS preflight
     if request.method == 'OPTIONS':
         return
-    
+
+    # List of endpoints that are completely public (no login or role required)
+    # These are truly public access points.
+    public_endpoints = [
+        'admin.login',
+        'admin.check_auth',
+        'admin.debug_session',
+        'admin.debug_full', # Keep debug_full for easy dev debugging
+        'admin.test_post', # Assuming this is a public test endpoint
+        'admin.logout' # Logout should be accessible to any logged-in user
+    ]
+
+    # If the endpoint is public, let it pass immediately
     if request.endpoint in public_endpoints:
-        logger.info("Allowing public endpoint")
+        logger.info(f"Allowing public endpoint: {request.endpoint}")
         return
-    
-    # Check session first
-    user_id = session.get('user_id')
-    logger.info(f"Session user_id: {user_id}")
-    logger.info(f"Session keys: {list(session.keys())}")
-    
-    # Check Flask-Login authentication
-    logger.info(f"Flask-Login authenticated: {current_user.is_authenticated}")
-    
+
+    # For all other endpoints, require authentication by default.
+    # The specific role check will then be handled by `@role_required` decorators
+    # on individual route functions, or by this `before_request` if no other decorator applies.
     if not current_user.is_authenticated:
-        logger.warning("Authentication failed - not authenticated")
+        logger.warning("Authentication required for endpoint: %s", request.endpoint)
         return jsonify({"error": "Authentication required"}), 401
-    
-    # Double-check user exists and has admin role
-    if hasattr(current_user, 'role'):
-        logger.info(f"User role: '{current_user.role}'")
-        if current_user.role != "admin":
-            logger.warning(f"Access denied - role '{current_user.role}' != 'admin'")
+
+    # Now, handle routes that are strictly admin-only and are NOT handled by
+    # the specific `@role_required` decorator (because they don't allow students).
+    # This is where your original 'restrict_to_admins' logic truly applies.
+    admin_only_endpoints = [
+        'admin.manage_users',
+        'admin.get_question_page',
+        'admin.create_question',
+        'admin.add_admin',
+        'admin.list_questions',
+        'admin.delete_question_via_post',
+        'admin.update_question',
+        'admin.delete_tag',
+        'admin.reset_all_stats'
+        'admin.get_tag_overview',
+        'admin.get_all_question_pass_stats'
+    ]
+
+    if request.endpoint in admin_only_endpoints:
+        if not hasattr(current_user, 'role') or current_user.role != "admin":
+            logger.warning(f"Access denied: User {current_user.username} (role: {current_user.role}) attempted to access admin-only endpoint: {request.endpoint}")
             return jsonify({"error": "Admin access required"}), 403
-    else:
-        logger.error("User object missing role attribute")
-        return jsonify({"error": "Invalid user object"}), 403
-    
-    logger.info("Admin access granted")
+        logger.info(f"Admin access granted for endpoint: {request.endpoint}")
+        return # Admin allowed, proceed to route function
+
+    # If an endpoint reaches here, it means:
+    # 1. It's not in public_endpoints.
+    # 2. It's not in admin_only_endpoints (or it was and an admin passed).
+    # 3. The user IS authenticated.
+    # This implies that specific `@role_required` (like for 'admin' or 'student')
+    # or `@login_required` (from Flask-Login) will handle the final authorization
+    # on the route function itself.
+    logger.info(f"Proceeding to endpoint handler for {request.endpoint}. Specific decorators will handle roles.")
 
 
 @bp.route("/debug-full", methods=["GET"])
@@ -99,7 +139,7 @@ def debug_full():
     Comprehensive debug endpoint that returns all auth info
     """
     import sys
-    
+
     debug_info = {
         "authentication": {
             "is_authenticated": current_user.is_authenticated,
@@ -122,17 +162,16 @@ def debug_full():
             "has_user_id": '_user_id' in session if 'session' in globals() else False
         }
     }
-    
+
     return jsonify(debug_info)
 
-import traceback
-import ast
-
 @bp.route("/run-code", methods=["POST"])
+@role_required(["admin", "student"]) # This decorator will now correctly apply
 def run_code():
     """
     Executes submitted code and returns the return value from func().
     Accepts optional 'input' as a string to pass to func().
+    Only accessible by 'admin' and 'student' roles.
     """
     data = request.get_json(silent=True)
     if not data or "code" not in data:
@@ -191,11 +230,13 @@ def run_code():
 
 
 # ------------------ Submit Code and Record Stats ------------------
-@bp.route("/questions/stats/<int:question_number>", methods=["POST"])
+@bp.route("/submit/<int:question_number>", methods=["POST"])
+@role_required(["admin", "student"]) # This decorator will now correctly apply
 def evaluate_and_record_stats(question_number):
     """
     Accepts user code, evaluates it against test cases, and records attempt/pass stats.
     Logs detailed errors to file.
+    Only accessible by 'admin' and 'student' roles.
     """
     data = request.get_json(silent=True)
     if not data or "code" not in data:
@@ -214,7 +255,6 @@ def evaluate_and_record_stats(question_number):
     exec_env = {}
 
     try:
-        # Try compiling the code first to catch syntax errors upfront
         compile(user_code, "<string>", "exec")
     except SyntaxError as e:
         tb = traceback.format_exc()
@@ -355,7 +395,7 @@ def evaluate_and_record_stats(question_number):
         "question_number": question_number
     }), 200
 
-        
+
 # ------------------ Authentication Check Endpoint ------------------
 @bp.route("/check-auth", methods=["GET"])
 def check_auth():
@@ -371,14 +411,16 @@ def check_auth():
 
 # ------------------ User Management (Admin Panel) ------------------
 @bp.route("/manage", methods=["GET", "POST"])
+@login_required # Ensure user is logged in
 def manage_users():
     """
     GET: Lists all users.
     POST: Creates a new user (admin or regular).
-    Access is only granted if ENABLE_ADMIN is True in config.
+    Access is only granted if ENABLE_ADMIN is True in config AND user is admin.
     """
     if not current_app.config.get("ENABLE_ADMIN"):
         return jsonify({"error": "Admin panel is disabled"}), 403
+    # The `check_access_control` before_request will handle the admin role check for this route.
 
     if request.method == "POST":
         data = request.get_json()
@@ -407,11 +449,13 @@ def manage_users():
 
 # ------------------ Get One Question (Admin) ------------------
 @bp.route("/questions/<int:question_id>", methods=["GET"])
+@login_required # Ensure user is logged in
 def get_question_page(question_id):
     """
     Returns full data for a specific question by ID.
     Admin-only route.
     """
+    # The `check_access_control` before_request will handle the admin role check for this route.
     question = Question.query.get(question_id)
     if not question:
         return jsonify({"error": "Question not found"}), 404
@@ -428,14 +472,16 @@ def get_question_page(question_id):
 
 # ------------------ Create Question ------------------
 @bp.route("/questions/", methods=["POST"])
+@login_required # Ensure user is logged in
 def create_question():
     """
     Creates a new coding question with auto-assigned question_number.
+    Admin-only route.
     """
+    # The `check_access_control` before_request will handle the admin role check for this route.
     try:
         data = request.get_json()
 
-        # Find available question number
         existing_numbers = {
             q.question_number
             for q in Question.query.with_entities(Question.question_number)
@@ -446,7 +492,6 @@ def create_question():
         while question_number in existing_numbers:
             question_number += 1
 
-        # Create and save new question
         question = Question(
             title=data["title"],
             prompt_md=data["prompt_md"],
@@ -467,18 +512,20 @@ def create_question():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
-    
+
 # ------------------ Add New Admin User ------------------
 @bp.route('/add-admin', methods=['POST'])
+@login_required # Ensure user is logged in
 def add_admin():
     """
     Creates a new admin user.
     Returns error if username already exists.
-    
+    Restricted to user "Ibrahim" only.
     """
+    # This route has its own specific check after the global admin check.
     if current_user.username != "Ibrahim":
         return jsonify({"error": "Only Ibrahim may add admin users"}), 403
-    
+
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -502,10 +549,13 @@ def add_admin():
 
 # ------------------ List All Questions ------------------
 @bp.route('/questionsAll/', methods=["POST"])
+@login_required # Ensure user is logged in
 def list_questions():
     """
     Returns a list of all questions with metadata.
+    Admin-only route.
     """
+    # The `check_access_control` before_request will handle the admin role check for this route.
     questions = Question.query.all()
     data = [
         {
@@ -521,14 +571,12 @@ def list_questions():
 
 # ------------------ Stats Overview By Tag ------------------
 @bp.route("/overview", methods=["GET"])
+@login_required
 def get_tag_overview():
     """
-    Combines all tags found in `question.tags` and `question_stat`,
-    then aggregates attempts/pass counts for each tag.
-    Returns pass rates per tag, defaulting to 0 if no stats exist.
+    Publicly viewable stats overview.
     """
     try:
-        # Step 1: Get all tags from the `question_stat` table
         stat_rows = db.session.query(
             QuestionStat.tag,
             func.sum(cast(QuestionStat.data.op('->>')('attempts'), Integer)).label("total_attempts"),
@@ -546,7 +594,6 @@ def get_tag_overview():
                 "pass_rate": round((passed / attempts * 100), 2) if attempts else 0.0
             }
 
-        # Step 2: Extract all tags from `question.tags` (comma-separated)
         raw_tags = db.session.execute(text("SELECT tags FROM question WHERE tags IS NOT NULL AND TRIM(tags) != ''"))
         question_tags = set()
 
@@ -555,7 +602,6 @@ def get_tag_overview():
             for t in tag_list:
                 question_tags.add(t)
 
-        # Step 3: Ensure all tags are present in the output
         result = []
         for tag in sorted(question_tags, key=str.lower):
             lower_tag = tag.lower()
@@ -576,17 +622,20 @@ def get_tag_overview():
         current_app.logger.debug(traceback.format_exc())
         return jsonify({"error": "Failed to generate stats"}), 500
 
-    
+
 # ------------------ Delete a Question ------------------
 @bp.route("/test-delete/<int:question_id>", methods=["DELETE","POST"])
+@login_required # Ensure user is logged in
 def delete_question_via_post(question_id):
-    # Check for override method
+    """
+    Admin-only route.
+    """
+    # The `check_access_control` before_request will handle the admin role check for this route.
     if request.method == "POST" and request.form.get("_method", "").upper() != "DELETE":
         return jsonify({"error": "Invalid method override"}), 400
 
     print(f"Attempting to delete question {question_id}")
-    
-    # Your delete logic here
+
     question = Question.query.get(question_id)
     if not question:
         return jsonify({"error": "Question not found"}), 404
@@ -598,19 +647,17 @@ def delete_question_via_post(question_id):
 
 # ------------------ Update Question ------------------
 @bp.route("/questions/<int:question_id>", methods=["POST", "PUT"])
-@login_required
+@login_required # Ensure user is logged in
 def update_question(question_id):
     """
     Updates a question with new data.
-    Supports PUT method with JSON body or
-    POST method with form data containing _method=PUT and JSON string in 'data'.
+    Admin-only route.
     """
-    # Handle POST with method override
+    # The `check_access_control` before_request will handle the admin role check for this route.
     if request.method == "POST":
         override = request.form.get("_method", "").upper()
         if override != "PUT":
             return jsonify({"error": "Invalid method override"}), 400
-        # Extract JSON data from form param 'data'
         data_json = request.form.get("data")
         if not data_json:
             return jsonify({"error": "Missing data parameter"}), 400
@@ -619,7 +666,6 @@ def update_question(question_id):
         except Exception as e:
             return jsonify({"error": f"Invalid JSON in data parameter: {str(e)}"}), 400
     else:
-        # Normal PUT with JSON body
         data = request.get_json()
         if not data:
             return jsonify({"error": "Missing JSON body"}), 400
@@ -628,7 +674,6 @@ def update_question(question_id):
     if not question:
         return jsonify({"error": "Question not found"}), 404
 
-    # Update fields
     question.title = data.get("title", question.title)
     question.prompt_md = data.get("prompt_md", question.prompt_md)
     question.difficulty = data.get("difficulty", question.difficulty)
@@ -638,62 +683,56 @@ def update_question(question_id):
 
     db.session.commit()
     return jsonify({"message": "Question updated"})
-        
+
 
 @bp.route('/delete-tag/<tag_name>', methods=['POST', 'DELETE'])
+@login_required 
 def delete_tag(tag_name):
     """
-    Delete a tag using SQLAlchemy - handles both POST with _method=DELETE and actual DELETE requests
+    Admin-only route.
     """
+    # The `check_access_control` before_request will handle the admin role check for this route.
     try:
         tag_name = urllib.parse.unquote(tag_name).lower()
-        
-        # Accept both actual DELETE requests and POST with _method=DELETE
+
         is_delete_request = (
-            request.method == 'DELETE' or 
+            request.method == 'DELETE' or
             request.form.get('_method') == 'DELETE'
         )
-        
+
         if is_delete_request:
-            
             try:
-                # Use raw SQL with SQLAlchemy for better control
-                # First, count affected questions
                 result = db.session.execute(
                     text("SELECT COUNT(*) FROM question WHERE tags ILIKE :tag_pattern"),
                     {"tag_pattern": f'%{tag_name}%'}
                 )
                 affected_count = result.scalar()
-                
+
                 if affected_count == 0:
                     return jsonify({
                         'success': True,
                         'message': f'Tag "{tag_name}" was not found in any questions.'
                     })
-                
-                # For SQLite (if you're using SQLite instead of PostgreSQL)
+
                 if 'sqlite' in str(db.engine.url):
-                    # SQLite version - simpler approach
                     questions_result = db.session.execute(
                         text("SELECT id, tags FROM question WHERE tags ILIKE :tag_pattern"),
                         {"tag_pattern": f'%{tag_name}%'}
                     )
-                    
+
                     for row in questions_result:
                         question_id, current_tags = row
                         if current_tags:
-                            # Split tags, remove target tag, rejoin
                             tag_list = [tag.strip() for tag in current_tags.split(',') if tag.strip()]
                             updated_tags = [tag for tag in tag_list if tag.lower() != tag_name.lower()]
                             new_tags_string = ','.join(updated_tags) if updated_tags else ''
-                            
+
                             db.session.execute(
                                 text("UPDATE questions SET tags = :new_tags WHERE id = :question_id"),
                                 {"new_tags": new_tags_string, "question_id": question_id}
                             )
-                
+
                 else:
-                    # PostgreSQL version - use advanced string functions
                     db.session.execute(
                         text("""
                             UPDATE question
@@ -709,28 +748,26 @@ def delete_tag(tag_name):
                             "regex_pattern": fr"(^|,){re.escape(tag_name)}(?=,|$)"
                         }
                     )
-                    
-                    # Clean up trailing/leading commas (PostgreSQL)
+
                     db.session.execute(
                         text("UPDATE question SET tags = TRIM(BOTH ',' FROM tags) WHERE LOWER(tags) ILIKE ',%' OR tags ILIKE '%,'")
                     )
-                
-                # Clean up empty tags (works for both SQLite and PostgreSQL)
+
                 db.session.execute(
                     text("UPDATE question SET tags = '' WHERE LOWER(tags) IS NULL OR TRIM(tags) = ''")
                 )
-                    
+
                 db.session.query(QuestionStat).filter(
                     func.lower(QuestionStat.tag) == tag_name
                 ).delete(synchronize_session=False)
-                
+
                 db.session.commit()
-                
+
                 return jsonify({
                     'success': True,
                     'message': f'Tag "{tag_name}" has been deleted and removed from {affected_count} questions.'
                 })
-                
+
             except Exception as e:
                 db.session.rollback()
                 raise e
@@ -739,7 +776,7 @@ def delete_tag(tag_name):
                 'success': False,
                 'message': 'Invalid request method'
             }), 405
-                
+
     except Exception as e:
         print(f"Error deleting tag: {e}")
         return jsonify({
@@ -748,11 +785,12 @@ def delete_tag(tag_name):
         }), 500
 # ------------------ Reset All Question Stats ------------------
 @bp.route("/questions/stats/reset", methods=["DELETE", "POST"])
+@login_required # Ensure user is logged in
 def reset_all_stats():
     """
-    Resets attempt/pass counts for all questions to zero.
-    Supports DELETE method or POST with _method=DELETE override.
+    Admin-only route.
     """
+    # The `check_access_control` before_request will handle the admin role check for this route.
     if request.method == "POST":
         override = request.form.get("_method", "").upper()
         if override != "DELETE":
@@ -768,10 +806,10 @@ def reset_all_stats():
 # ------------------ Question-Specific Pass Stats ------------------
 
 @bp.route("/question-pass-stats", methods=["GET"])
+@login_required 
 def get_all_question_pass_stats():
     """
-    Returns pass rates per question.
-    Iterates through QuestionStats to compute stats for each question.
+    Publicly viewable pass stats per question.
     """
     questions = Question.query.all()
     results = []
@@ -798,7 +836,7 @@ def get_all_question_pass_stats():
 @bp.route("/login", methods=["POST"])
 def login():
     """
-    Enhanced login with explicit session management
+    Handles user login.
     """
     data = request.get_json()
     username = data.get("username")
@@ -821,22 +859,15 @@ def login():
 
     logger.info(f"User found: {user.username}, Role: {user.role}")
 
-    if user.role != "admin":
-        logger.warning(f"User {username} is not an admin. Role: {user.role}")
-        return jsonify({"error": "Not authorized"}), 403
-
-    # Clear any existing session data
     session.clear()
-    
-    # Login user with Flask-Login
+
     login_user(user, remember=True)
-    
-    # Explicitly set session data
+
     session['user_id'] = user.id
     session['username'] = user.username
     session['role'] = user.role
     session.permanent = True
-    
+
     logger.info(f"Successfully logged in user: {username}")
     logger.info(f"Session after login: {dict(session)}")
 
@@ -853,7 +884,7 @@ def login():
 @login_required
 def logout():
     """
-    Logs out the current user.
+    Logs out the current user. Accessible by any logged-in user.
     """
     logout_user()
     return jsonify({"message": "Logged out"})

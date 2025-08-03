@@ -4,6 +4,7 @@ from flask_migrate import Migrate
 from models import db, User
 from flask_login import LoginManager, login_required, current_user
 from dotenv import load_dotenv
+from datetime import timedelta
 
 # Load environment variables from .env file
 load_dotenv() 
@@ -11,7 +12,6 @@ load_dotenv()
 # Initialize extensions
 migrate = Migrate()
 login_manager = LoginManager()
-from datetime import timedelta
 
 def create_app():
     # ------------------ Flask App Setup ------------------
@@ -24,14 +24,18 @@ def create_app():
             if override:
                 request.environ["REQUEST_METHOD"] = override.upper()
 
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-    app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+    # Unified secret key configuration
+    secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-fallback') 
+    app.config['SECRET_KEY'] = secret_key
+    app.secret_key = secret_key  # Keep both for compatibility, but use same value
+    
+    # Session cookie configuration
+    app.config['SESSION_COOKIE_SECURE'] = True  # Set to True in production with HTTPS
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
     
-    # Load secret key and config
-    app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
+    # Load other config
     app.config.from_object("config.Config")
 
     # Initialize database and migration
@@ -39,11 +43,14 @@ def create_app():
     migrate.init_app(app, db)
 
     # ------------------ Login Manager Setup ------------------
-    login_manager = LoginManager()
+    # Use the global login_manager instance, don't create a new one
     login_manager.init_app(app)
     login_manager.login_view = 'admin.login'
-    login_manager.session_protection = 'strong' 
-
+    
+    # CRITICAL FIX: Change from 'strong' to 'basic' or None
+    # 'strong' session protection causes intermittent 403 errors
+    login_manager.session_protection = None  # or None for no protection
+    
     @login_manager.user_loader
     def load_user(user_id):
         """
@@ -62,6 +69,9 @@ def create_app():
     from my_app.routes.student import student_bp
     app.register_blueprint(student_bp, url_prefix="/student")
 
+    from my_app.routes.server import server_bp
+    app.register_blueprint(server_bp, url_prefix="/server")
+    
     # ------------------ Frontend Entry Points ------------------
 
     @app.route("/")

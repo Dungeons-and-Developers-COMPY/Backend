@@ -1,26 +1,27 @@
 import requests
 
-question_number = 2
-url = f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/questions/stats/{question_number}"
+session = requests.Session()
 
-# Code to be tested against the test cases
-code_submission = r"""
-def func(word):
-    answer = ""
-    for i in range(5, 0, -1):
-        answer += "*" * i + "\n"
-    return answer
-"""
+# Login
+login = session.post(
+    "https://dungeonsanddevelopers.cs.uct.ac.za/admin/login", 
+    json={"username": "", "password": ""}
+)
 
-payload = {
-    "code": code_submission
-}
 
-response = requests.post(url, json=payload)
-
+print("Login Status:", login.status_code)
 try:
-    print(response.json())
+    print("Login Response:", login.json())
 except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
+    print("Login Response (raw):", login.text)
+
+
+question = 5
+response = session.post(
+    f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/submit/{question}",
+    json={"code": r"def func(n): return n"}
+)
+try:
+    print("Response JSON:", response.json())
+except Exception:
+    print("Response Text:", response.text)
