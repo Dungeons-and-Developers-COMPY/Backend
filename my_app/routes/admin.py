@@ -645,6 +645,38 @@ def delete_question_via_post(question_id):
     return jsonify({"message": f"Question {question_id} deleted"}), 200
 
 
+# ------------------ Get all Tags ------------------
+
+@bp.route("/all-tags", methods=["GET"])
+def get_all_tags():
+    """
+    Returns a list of all unique tags used across all questions.
+    """
+    questions = Question.query.with_entities(Question.tags).all()
+
+    tag_set = set()
+    for q in questions:
+        if q.tags:
+            tag_list = [tag.strip().lower() for tag in q.tags.split(",") if tag.strip()]
+            tag_set.update(tag_list)
+
+    return jsonify(sorted(tag_set))
+
+
+# ------------------ Get a Question's difficulty ------------------
+
+@bp.route("/question/<int:question_id>/difficulty", methods=["GET"])
+def get_question_difficulty(question_id):
+    """
+    Returns the difficulty level of a specific question by ID.
+    """
+    question = Question.query.get(question_id)
+
+    if not question:
+        return jsonify({"error": "Question not found"}), 404
+
+    return jsonify({"difficulty": question.difficulty.lower().strip() if question.difficulty else None})
+
 # ------------------ Update Question ------------------
 @bp.route("/questions/<int:question_id>", methods=["POST", "PUT"])
 @login_required # Ensure user is logged in

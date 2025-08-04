@@ -4,8 +4,8 @@ session = requests.Session()
 
 # Login
 login = session.post(
-    "https://dungeonsanddevelopers.cs.uct.ac.za/admin/login", 
-    json={"username": "", "password": ""}
+    "http://127.0.0.1:5000/admin/login", 
+    json={"username": "Ibrahim", "password": "Dnd4ever!"}
 )
 
 
@@ -17,9 +17,8 @@ except Exception:
 
 
 question = 5
-response = session.post(
-    f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/submit/{question}",
-    json={"code": r"def func(n): return n"}
+response = session.get(
+    f"http://127.0.0.1:5000/admin/question/1/difficulty",
 )
 try:
     print("Response JSON:", response.json())
