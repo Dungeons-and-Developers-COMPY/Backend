@@ -244,3 +244,40 @@ def health_check():
         "active_servers_count": len(active_servers),
         "timestamp": datetime.datetime.now().isoformat()
     }), 200
+    
+@server_bp.route("/decrement-players", methods=["POST"])
+@role_required(["admin", "student"])
+def decrement_player_count():
+    """
+    Decrements the player count for a specific server by 1.
+    Expected JSON body:
+    {
+        "ip": "192.168.1.100",
+        "port": 8080
+    }
+    """
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Missing JSON body"}), 400
+    
+    if "ip" not in data or "port" not in data:
+        return jsonify({"error": "Missing required fields: ip, port"}), 400
+    
+    server_key = f"{data['ip']}:{data['port']}"
+    
+    # Find and update server
+    for server in active_servers:
+        if f"{server['ip']}:{server['port']}" == server_key:
+            old_count = server["current_players"]
+            # Ensure the count doesn't go below 0
+            if old_count > 0:
+                server["current_players"] -= 1
+            
+            logger.info(f"Server {server_key} player count decremented: {old_count} -> {server['current_players']}")
+            
+            return jsonify({
+                "message": "Player count decremented successfully",
+                "server_info": server
+            }), 200
+    
+    return jsonify({"error": "Server not found"}), 404

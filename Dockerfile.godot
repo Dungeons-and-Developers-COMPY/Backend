@@ -1,0 +1,17 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+    libasound2 libpulse0 libx11-6 libxcursor1 libxrandr2 libxi6 libgl1-mesa-glx libglu1-mesa \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Godot binary from Backend/linux_server folder
+COPY linux_server/server.x86_64 /app/server.x86_64
+COPY linux_server/server.pck /app/server.pck
+
+RUN chmod +x /app/server.x86_64
+
+EXPOSE 12345
+
+ENTRYPOINT ["./server.x86_64", "--server"]

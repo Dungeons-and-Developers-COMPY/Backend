@@ -63,7 +63,24 @@ if login.status_code == 200:
     except:
         print(f"Deregister Response (raw): {deregister.text}")
     
-    # Test 13: Final server list
+    
+    # Test 13: Decrement player count via ip and port number!
+    register_data = {
+        "ip": "137.158.61.244",
+        "port": 12345,
+    }
+    register = session.post(
+        "https://dungeonsanddevelopers.cs.uct.ac.za/server/decrement-players",
+        json=register_data
+    )
+    print(f"Register2 Status: {register.status_code}")
+    try:
+        print(f"Register2 Response: {register.json()}")
+    except:
+        print(f"Register2 Response (raw): {register.text}")
+    
+    
+    # Test 14: Final server list
     print("\n13. Testing final server list...")
     final_list = session.get("https://dungeonsanddevelopers.cs.uct.ac.za/server/list")
     print(f"Final List Status: {final_list.status_code}")
