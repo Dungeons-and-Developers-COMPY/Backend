@@ -1,88 +1,43 @@
 import requests
 
+BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za"
 session = requests.Session()
 
-# Login
-login = session.post(
-    "https://dungeonsanddevelopers.cs.uct.ac.za/admin/login", 
+# --- Test 1: Username/Password Login ---
+print("\n=== Testing username/password login ===")
+login_pw = session.post(
+    f"{BASE_URL}/admin/login", 
     json={"username": "Ibrahim", "password": "Dnd4Ever!"}
 )
 
-print("Login Status:", login.status_code)
+print("Login (username/password) Status:", login_pw.status_code)
 try:
-    print("Login Response:", login.json())
+    print("Login Response:", login_pw.json())
 except Exception:
-    print("Login Response (raw):", login.text)
+    print("Login Response (raw):", login_pw.text)
 
-if login.status_code == 200:
-    print("\n" + "="*50)
+# --- Test 2: Special Key Login ---
+print("\n=== Testing special key login ===")
+login_key = session.post(
+    f"{BASE_URL}/admin/login", 
+    json={"login_key": "4fIEjhIwkfIIPcU2m4vYDdLe0ZFkDgzh"}
+)
+
+print("Login (key) Status:", login_key.status_code)
+try:
+    print("Login Response:", login_key.json())
+except Exception:
+    print("Login Response (raw):", login_key.text)
+
+
+# If either login worked, test protected route
+if login_pw.status_code == 200 or login_key.status_code == 200:
+    print("\n" + "=" * 50)
     print("TESTING SERVER ROUTES")
-    print("="*50)
-    
+    print("=" * 50)
 
-    print("\n4. Testing second server registration...")
-    register_data2 = {
-        "ip": "192.168.1.101",
-        "port": 8081,
-        "type": "2v2",
-        "max_players": 4,
-        "current_players": 0
-    }
-    register2 = session.post(
-        "https://dungeonsanddevelopers.cs.uct.ac.za/server/register",
-        json=register_data2
-    )
-    print(f"Register2 Status: {register2.status_code}")
-    try:
-        print(f"Register2 Response: {register2.json()}")
-    except:
-        print(f"Register2 Response (raw): {register2.text}")
-    
-    # Test 5: List servers again (should show registered servers)
-    print("\n5. Testing list servers (should show 2 servers)...")
-    list_servers2 = session.get("https://dungeonsanddevelopers.cs.uct.ac.za/server/list")
-    print(f"List2 Status: {list_servers2.status_code}")
-    try:
-        print(f"List2 Response: {list_servers2.json()}")
-    except:
-        print(f"List2 Response (raw): {list_servers2.text}")
-        
-    # Test 12: Deregister a server
-    print("\n12. Testing server deregistration...")
-    deregister_data = {
-        "ip": "192.168.1.101",
-        "port": 8081
-    }
-    deregister = session.post(
-        "https://dungeonsanddevelopers.cs.uct.ac.za/server/deregister",
-        json=deregister_data
-    )
-    print(f"Deregister Status: {deregister.status_code}")
-    try:
-        print(f"Deregister Response: {deregister.json()}")
-    except:
-        print(f"Deregister Response (raw): {deregister.text}")
-    
-    
-    # Test 13: Decrement player count via ip and port number!
-    register_data = {
-        "ip": "137.158.61.244",
-        "port": 12345,
-    }
-    register = session.post(
-        "https://dungeonsanddevelopers.cs.uct.ac.za/server/decrement-players",
-        json=register_data
-    )
-    print(f"Register2 Status: {register.status_code}")
-    try:
-        print(f"Register2 Response: {register.json()}")
-    except:
-        print(f"Register2 Response (raw): {register.text}")
-    
-    
-    # Test 14: Final server list
-    print("\n13. Testing final server list...")
-    final_list = session.get("https://dungeonsanddevelopers.cs.uct.ac.za/server/list")
+    print("\n1. Testing final server list...")
+    final_list = session.get(f"{BASE_URL}/server/list")
     print(f"Final List Status: {final_list.status_code}")
     try:
         print(f"Final List Response: {final_list.json()}")
