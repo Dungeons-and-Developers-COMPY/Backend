@@ -3,10 +3,12 @@ import requests
 BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za"
 session = requests.Session()
 
-# --- Test 1: Username/Password Login ---
+SERVER_KEY = "4fIEjhIwkfIIPcU2m4vYDdLe0ZFkDgzh"
+
+# --- Test 1: Username/Password Login (for normal user/admin routes) ---
 print("\n=== Testing username/password login ===")
 login_pw = session.post(
-    f"{BASE_URL}/admin/login", 
+    f"{BASE_URL}/admin/login",
     json={"username": "Ibrahim", "password": "Dnd4Ever!"}
 )
 
@@ -16,30 +18,17 @@ try:
 except Exception:
     print("Login Response (raw):", login_pw.text)
 
-# --- Test 2: Special Key Login ---
-print("\n=== Testing special key login ===")
-login_key = session.post(
-    f"{BASE_URL}/admin/login", 
-    json={"login_key": "4fIEjhIwkfIIPcU2m4vYDdLe0ZFkDgzh"}
+
+# --- Test 2: Test Decrement Players using SERVER KEY ---
+print("\n=== Testing decrement-players with server key ===")
+decrement_resp = requests.post(
+    f"{BASE_URL}/server/decrement-players",
+    headers={"ServerKey": SERVER_KEY, "Content-Type": "application/json"},
+    json={"ip": "137.158.61.244", "port": 12341}
 )
 
-print("Login (key) Status:", login_key.status_code)
+print("Decrement Status:", decrement_resp.status_code)
 try:
-    print("Login Response:", login_key.json())
+    print("Decrement Response:", decrement_resp.json())
 except Exception:
-    print("Login Response (raw):", login_key.text)
-
-
-# If either login worked, test protected route
-if login_pw.status_code == 200 or login_key.status_code == 200:
-    print("\n" + "=" * 50)
-    print("TESTING SERVER ROUTES")
-    print("=" * 50)
-
-    print("\n1. Testing final server list...")
-    final_list = session.get(f"{BASE_URL}/server/list")
-    print(f"Final List Status: {final_list.status_code}")
-    try:
-        print(f"Final List Response: {final_list.json()}")
-    except:
-        print(f"Final List Response (raw): {final_list.text}")
+    print("Decrement Response (raw):", decrement_resp.text)

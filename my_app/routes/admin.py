@@ -166,7 +166,7 @@ def debug_full():
     return jsonify(debug_info)
 
 @bp.route("/run-code", methods=["POST"])
-@role_required(["admin", "student"]) # This decorator will now correctly apply
+@role_required(["admin", "student"])
 def run_code():
     """
     Executes submitted code and returns the return value from func().

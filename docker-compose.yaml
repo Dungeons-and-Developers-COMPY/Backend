@@ -26,7 +26,15 @@ services:
       context: .
       dockerfile: Dockerfile.godot
     ports:
+      - "12341:12341"
+      - "12342:12342"
+      - "12343:12343"
+      - "12344:12344"
       - "12345:12345"
+      - "12346:12346"
+      - "12347:12347"
+      - "12348:12348"
+      - "12349:12349"
     restart: unless-stopped
 
 volumes:

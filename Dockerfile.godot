@@ -19,6 +19,14 @@ WORKDIR /app
 COPY windows_server/server.exe /app/server.exe
 COPY windows_server/server.pck /app/server.pck
 
+EXPOSE 12341
+EXPOSE 12342
+EXPOSE 12343
+EXPOSE 12344
 EXPOSE 12345
+EXPOSE 12346
+EXPOSE 12347
+EXPOSE 12348
+EXPOSE 12349
 
 ENTRYPOINT ["wine", "server.exe", "--server"]

