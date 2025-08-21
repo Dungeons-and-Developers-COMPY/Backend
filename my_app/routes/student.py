@@ -1,5 +1,6 @@
+# my_app/routes/student.py
 from flask import Blueprint, request, jsonify, current_app
-from flask_login import login_user
+from flask_login import login_user, current_user, login_required
 from werkzeug.security import check_password_hash
 from models import User
 
@@ -35,5 +36,25 @@ def student_login():
     return jsonify({
         "message": "Logged in",
         "username": user.username,
-        "role": user.role
+        "role": user.role,
     })
+
+# ------------------ Who Am I Route (Protected) ------------------
+@student_bp.route("/whoami", methods=["GET"])
+def whoami():
+    """
+    Returns the current logged-in user's information.
+    Requires the user to be authenticated.
+    """
+    if not current_user.is_authenticated:
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    if current_user.role != "student":
+        return jsonify({"error": "Not authorized"}), 403
+    
+    return jsonify({
+        "username": current_user.username,
+        "role": current_user.role,
+        "is_authenticated": True
+    })
+

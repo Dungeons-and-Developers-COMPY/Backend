@@ -9,6 +9,7 @@ services:
       - .env
     depends_on:
       - db
+
   db:
     image: postgres:15
     restart: always
@@ -21,21 +22,40 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  godot-server:
+  godot-server-1:
     build:
       context: .
       dockerfile: Dockerfile.godot
+      args:
+        SERVER_PORT: 12341
+    environment:
+      SERVER_PORT: 12341
+      SERVER_EXE: server.console.exe
     ports:
       - "12341:12341"
-      - "12342:12342"
-      - "12343:12343"
-      - "12344:12344"
-      - "12345:12345"
-      - "12346:12346"
-      - "12347:12347"
-      - "12348:12348"
-      - "12349:12349"
-    restart: unless-stopped
 
+  godot-server-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.godot
+      args:
+        SERVER_PORT: 12342
+    environment:
+      SERVER_PORT: 12342
+      SERVER_EXE: server2.console.exe
+    ports:
+      - "12342:12342"
+
+  godot-server-3:
+    build:
+      context: .
+      dockerfile: Dockerfile.godot
+      args:
+        SERVER_PORT: 12343
+    environment:
+      SERVER_PORT: 12343
+      SERVER_EXE: 2v2_server.console.exe
+    ports:
+      - "12343:12343"
 volumes:
   pgdata:

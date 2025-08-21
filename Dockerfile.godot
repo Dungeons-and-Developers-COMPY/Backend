@@ -1,8 +1,7 @@
 # Dockerfile.godot
-
 FROM ubuntu:22.04
 
-# Install Wine and required libraries
+# Install Wine and dependencies
 RUN dpkg --add-architecture i386 && \
     apt update && \
     apt install -y software-properties-common && \
@@ -11,22 +10,33 @@ RUN dpkg --add-architecture i386 && \
     apt install -y \
     wine64 wine32 \
     libasound2 libpulse0 libx11-6 libxcursor1 libxrandr2 libxi6 libgl1-mesa-glx libglu1-mesa \
+    wget unzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy Windows build
+# Copy Godot console server builds
+COPY windows_server/server.console.exe /app/server.console.exe
+COPY windows_server/server2.console.exe /app/server2.console.exe
+COPY windows_server/2v2_server.console.exe /app/2v2_server.console.exe
+
 COPY windows_server/server.exe /app/server.exe
+COPY windows_server/server2.exe /app/server2.exe
+COPY windows_server/2v2_server.exe /app/2v2_server.exe
+
 COPY windows_server/server.pck /app/server.pck
+COPY windows_server/server2.pck /app/server2.pck
+COPY windows_server/2v2_server.pck /app/2v2_server.pck
 
-EXPOSE 12341
-EXPOSE 12342
-EXPOSE 12343
-EXPOSE 12344
-EXPOSE 12345
-EXPOSE 12346
-EXPOSE 12347
-EXPOSE 12348
-EXPOSE 12349
+# Default port argument
+ARG SERVER_PORT=12341
+ENV SERVER_PORT=${SERVER_PORT}
 
-ENTRYPOINT ["wine", "server.exe", "--server"]
+# Expose the port
+EXPOSE ${SERVER_PORT}
+
+# Copy entrypoint
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]

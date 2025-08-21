@@ -171,13 +171,23 @@ def run_code():
     """
     Executes submitted code and returns the return value from func().
     Accepts optional 'input' as a string to pass to func().
+    Code can be base64 encoded to avoid Apache security issues.
     Only accessible by 'admin' and 'student' roles.
     """
     data = request.get_json(silent=True)
     if not data or "code" not in data:
         return jsonify({"error": "Missing 'code' in request body"}), 400
 
-    user_code = data["code"]
+    # Decode base64 encoded code
+    raw_code = data["code"]
+    try:
+        import base64
+        # Try to decode as base64
+        user_code = base64.b64decode(raw_code).decode('utf-8')
+    except Exception:
+        # If base64 decoding fails, use the raw code as-is
+        user_code = raw_code
+
     input_value = data.get("input")
 
     exec_env = {}
@@ -230,18 +240,28 @@ def run_code():
 
 
 # ------------------ Submit Code and Record Stats ------------------
+# ------------------ Submit Code and Record Stats ------------------
 @bp.route("/submit/<int:question_number>", methods=["POST"])
 @role_required(["admin", "student"]) # This decorator will now correctly apply
 def evaluate_and_record_stats(question_number):
     """
-    Accepts user code, evaluates it against test cases, and records attempt/pass stats.
+    Accepts user code (potentially base64 encoded), evaluates it against test cases, and records attempt/pass stats.
     Logs detailed errors to file.
     Only accessible by 'admin' and 'student' roles.
     """
     data = request.get_json(silent=True)
     if not data or "code" not in data:
         return jsonify({"error": "Missing JSON body or 'code' field"}), 400
-    user_code = data["code"]
+    
+    # Decode base64 encoded code
+    raw_code = data["code"]
+    try:
+        import base64
+        # Try to decode as base64
+        user_code = base64.b64decode(raw_code).decode('utf-8')
+    except Exception:
+        # If base64 decoding fails, use the raw code as-is
+        user_code = raw_code
 
     question = Question.query.filter_by(question_number=question_number).first()
     if not question:
@@ -368,7 +388,7 @@ def evaluate_and_record_stats(question_number):
             )
             return jsonify({
                 "success": False,
-                "message": "At least one test case failed.",
+                "error": "At least one test case failed.",
                 "failed_case": case,
                 "expected": expected_output.strip(),
                 "got": result_str,

@@ -1,50 +1,51 @@
 import requests
+import base64
 
-question_number = 3
-url = f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/questions/stats/{question_number}"
+# --- Configuration ---
+BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za/admin"
+USERNAME = "Mahir"
+PASSWORD = "MrMoodles123!"
 
-# Code to be tested against the test cases
-code_submission =r"""
-def func(word):
+
+# --- Start a session ---
+session = requests.Session()
+
+# Optional: log in first if your endpoint requires session auth
+login_resp = session.post(
+    f"{BASE_URL}/login",
+    json={"username": USERNAME, "password": PASSWORD}
+)
+
+print("Login Status:", login_resp.status_code)
+try:
+    print("Login Response:", login_resp.json())
+except Exception:
+    print("Login Response (raw):", login_resp.text)
+
+QUESTION_NUMBER = 14
+# --- Code submission ---
+raw_code = """
+def func(n):
+    return (n + 5) * 2
+
 """
-# yes = if word == word[::1]: return true else: return false
-payload = {
-    "code": code_submission
-}
 
-auth = ("Ibrahim", "Dnd4Ever!")
+# Encode in base64 (your backend tries to decode if it looks like base64)
+encoded_code = base64.b64encode(raw_code.encode("utf-8")).decode("utf-8")
 
-response = requests.post(url, json=payload, auth=auth)
+payload = {"code": encoded_code}
 
+submit_url = f"{BASE_URL}/submit/{QUESTION_NUMBER}"
+
+# If basic auth is required
+auth = (USERNAME, PASSWORD)
+
+response = session.post(submit_url, json=payload, auth=auth)
+
+print("\n--- Submission Response ---")
 try:
     print(response.json())
 except Exception:
     print("Non-JSON response received:")
     print("Status code:", response.status_code)
     print("Raw response:", response.text)
-
-#----------------------------------------------------------------------------------
-# The following returns a JSON format of the statistics for a particular question
-"""
-response = requests.get(f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/question-pass-stats")
-
-try:
-    print(response.json())
-except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
-    
-"""
-# Random
-"""
-difficulty = 'easy'
-response = requests.get(f"http://localhost:5000/questions/random/{difficulty}")
-
-try:
-    print(response.json())
-except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
-"""
