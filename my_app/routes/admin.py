@@ -240,9 +240,22 @@ def run_code():
 
 
 # ------------------ Submit Code and Record Stats ------------------
-# ------------------ Submit Code and Record Stats ------------------
+def track_failed_attempt(question):
+    """Helper function to track failed submission stats"""
+    tags = (question.tags or "").split(",")
+    for tag in tags:
+        tag = tag.strip()
+        if not tag:
+            continue
+        stat = QuestionStat.query.filter_by(question_id=question.id, tag=tag).first()
+        if not stat:
+            stat = QuestionStat(question_id=question.id, tag=tag, data={})
+            db.session.add(stat)
+        stat.bump(passed=False)
+    db.session.commit()
+
 @bp.route("/submit/<int:question_number>", methods=["POST"])
-@role_required(["admin", "student"]) # This decorator will now correctly apply
+@role_required(["admin", "student"])
 def evaluate_and_record_stats(question_number):
     """
     Accepts user code (potentially base64 encoded), evaluates it against test cases, and records attempt/pass stats.
@@ -285,6 +298,7 @@ def evaluate_and_record_stats(question_number):
             error_message=str(e),
             tb=tb
         )
+        track_failed_attempt(question)  # Track failed attempt
         return jsonify({
             "success": False,
             "error": f"Code compilation error (SyntaxError): {str(e)}",
@@ -299,6 +313,7 @@ def evaluate_and_record_stats(question_number):
             error_message=str(e),
             tb=tb
         )
+        track_failed_attempt(question)  # Track failed attempt
         return jsonify({
             "success": False,
             "error": f"Code compilation error: {str(e)}",
@@ -316,6 +331,7 @@ def evaluate_and_record_stats(question_number):
             error_message=str(e),
             tb=tb
         )
+        track_failed_attempt(question)  # Track failed attempt
         return jsonify({
             "success": False,
             "error": f"Runtime error during code execution: {str(e)}",
@@ -331,6 +347,7 @@ def evaluate_and_record_stats(question_number):
             error_type="MissingFunction",
             error_message=error_msg,
         )
+        track_failed_attempt(question)  # Track failed attempt
         return jsonify({"success": False, "error": error_msg}), 400
 
     for case in test_cases:
@@ -370,6 +387,7 @@ def evaluate_and_record_stats(question_number):
                 failed_case=case,
                 tb=tb
             )
+            track_failed_attempt(question)  # Track failed attempt
             return jsonify({
                 "success": False,
                 "error": f"Code runtime error: {error_msg}",
@@ -386,6 +404,7 @@ def evaluate_and_record_stats(question_number):
                 error_message=error_msg,
                 failed_case=case
             )
+            track_failed_attempt(question)  # Track failed attempt
             return jsonify({
                 "success": False,
                 "error": "At least one test case failed.",

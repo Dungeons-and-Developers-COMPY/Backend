@@ -94,11 +94,33 @@ def create_app():
     def serve_student():
         """
         Serves the student dashboard page.
-        Ensures the logged-in user has the 'user' role.
+        Ensures the logged-in user has the 'student' role.
         """
         if current_user.role != "student":
             return "Unauthorized", 403
-        return send_from_directory(os.path.join(app.static_folder, "student"), "student.html")
+        return send_from_directory(app.static_folder, "student.html") 
+
+    @app.route("/student/1v1")
+    @login_required
+    def serve_student_1v1():
+        """
+        Serves the 1v1 game page.
+        Ensures the logged-in user has the 'student' role.
+        """
+        if current_user.role != "student":
+            return "Unauthorized", 403
+        return send_from_directory(os.path.join(app.static_folder, "student"), "1v1.html")
+
+    @app.route("/student/2v2")
+    @login_required
+    def serve_student_2v2():
+        """
+        Serves the 2v2 game page.
+        Ensures the logged-in user has the 'student' role.
+        """
+        if current_user.role != "student":
+            return "Unauthorized", 403
+        return send_from_directory(os.path.join(app.static_folder, "student"), "2v2.html")
 
     # ------------------ Static Assets Catch-All ------------------
 

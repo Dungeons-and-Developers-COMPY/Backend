@@ -26,7 +26,11 @@ COPY windows_server/2v2_server.exe /app/2v2_server.exe
 
 COPY windows_server/server.pck /app/server.pck
 COPY windows_server/server2.pck /app/server2.pck
+
 COPY windows_server/2v2_server.pck /app/2v2_server.pck
+COPY windows_server/2v2_server.pck /app/2v2_server.pck
+
+COPY windows_server/libtwovoip.windows.template_release.x86_64.dll /app/libtwovoip.windows.template_release.x86_64.dll
 
 # Default port argument
 ARG SERVER_PORT=12341

@@ -4,6 +4,10 @@ from flask_login import current_user
 from functools import wraps
 import datetime
 import logging
+from models import User, db
+
+# Your custom decorator
+from functools import wraps
 
 # Create the blueprint
 server_bp = Blueprint('server', __name__)
@@ -292,3 +296,83 @@ def decrement_player_count():
             }), 200
     
     return jsonify({"error": "Server not found"}), 404
+
+
+
+# ------------------ Time Routes ------------------
+
+@server_bp.route("/leaderboard", methods=["GET"])
+@role_required(["admin", "student"])
+def leaderboard():
+    """
+    Returns all users with non-zero time_taken, sorted by time (ascending).
+    """
+    users = User.query.filter(User.time_taken > 0).order_by(User.time_taken.asc()).all()
+    result = [
+        {"username": u.username, "time_taken": u.time_taken}
+        for u in users
+    ]
+    return jsonify(result), 200
+
+
+@server_bp.route("/update-time", methods=["POST"])
+@role_required(["admin", "student"])
+def update_time():
+    """
+    Updates a user's time_taken if the new time is faster (smaller).
+    Expected JSON:
+    {
+        "username": "student1",
+        "time": 12.34
+    }
+    """
+    data = request.get_json(silent=True)
+    if not data or "username" not in data or "time" not in data:
+        return jsonify({"success": False, "error": "Missing username or time"}), 400
+
+    username = data["username"]
+    try:
+        new_time = float(data["time"])
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Invalid time value"}), 400
+
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+
+    # Ensure user.time_taken is never None
+    if user.time_taken is None:
+        user.time_taken = 0.0
+
+    # Only update if new time is faster or previous time is 0
+    if user.time_taken == 0.0 or new_time < user.time_taken:
+        user.time_taken = new_time
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "message": f"Time updated for {username}",
+            "time_taken": user.time_taken
+        }), 200
+    else:
+        return jsonify({
+            "success": False,
+            "message": f"No update needed. Existing time ({user.time_taken}) is faster."
+        }), 200
+
+
+@server_bp.route("/reset-times", methods=["POST"])
+@role_required(["admin"])
+def reset_times():
+    """
+    Resets all users' time_taken back to 0.0.
+    Only accessible by admins.
+    """
+    try:
+        users = User.query.all()
+        for user in users:
+            user.time_taken = 0.0
+        db.session.commit()
+        return jsonify({"message": "All user times have been reset to 0.0"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to reset times: {str(e)}"}), 500

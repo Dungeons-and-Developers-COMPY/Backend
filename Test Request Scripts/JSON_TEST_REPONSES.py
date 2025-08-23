@@ -1,51 +1,52 @@
 import requests
-import base64
 
 # --- Configuration ---
 BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za/admin"
 USERNAME = "Mahir"
 PASSWORD = "MrMoodles123!"
 
-
 # --- Start a session ---
 session = requests.Session()
 
-# Optional: log in first if your endpoint requires session auth
+# --- Login ---
 login_resp = session.post(
     f"{BASE_URL}/login",
     json={"username": USERNAME, "password": PASSWORD}
 )
 
-print("Login Status:", login_resp.status_code)
+print("Login status:", login_resp.status_code)
 try:
-    print("Login Response:", login_resp.json())
+    print("Login response:", login_resp.json())
 except Exception:
-    print("Login Response (raw):", login_resp.text)
+    print("Login response (raw):", login_resp.text)
 
-QUESTION_NUMBER = 14
-# --- Code submission ---
-raw_code = """
-def func(n):
-    return (n + 5) * 2
+# --- Update user time ---
+update_time_url = f"https://dungeonsanddevelopers.cs.uct.ac.za/server/update-time"
+user_to_update = "student002"  # change to the username you want to update
+new_time = 12.3 # new time in seconds (float)
 
-"""
+update_resp = session.post(
+    update_time_url,
+    json={"username": user_to_update, "time": new_time}
+)
 
-# Encode in base64 (your backend tries to decode if it looks like base64)
-encoded_code = base64.b64encode(raw_code.encode("utf-8")).decode("utf-8")
-
-payload = {"code": encoded_code}
-
-submit_url = f"{BASE_URL}/submit/{QUESTION_NUMBER}"
-
-# If basic auth is required
-auth = (USERNAME, PASSWORD)
-
-response = session.post(submit_url, json=payload, auth=auth)
-
-print("\n--- Submission Response ---")
+print("\n--- Update Time Response ---")
 try:
-    print(response.json())
+    print(update_resp.json())
 except Exception:
     print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
+    print("Status code:", update_resp.status_code)
+    print("Raw response:", update_resp.text)
+
+# --- Get leaderboard ---
+leaderboard_url = f"https://dungeonsanddevelopers.cs.uct.ac.za/server/leaderboard"
+
+leaderboard_resp = session.get(leaderboard_url)
+
+print("\n--- Leaderboard Response ---")
+try:
+    print(leaderboard_resp.json())
+except Exception:
+    print("Non-JSON response received:")
+    print("Status code:", leaderboard_resp.status_code)
+    print("Raw response:", leaderboard_resp.text)
