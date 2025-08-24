@@ -1,5 +1,5 @@
 # server.py - New blueprint file
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, redirect
 from flask_login import current_user
 from functools import wraps
 import datetime

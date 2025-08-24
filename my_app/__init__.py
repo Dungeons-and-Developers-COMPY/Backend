@@ -1,5 +1,5 @@
 import os
-from flask import Flask, send_from_directory, current_app, request
+from flask import Flask, send_from_directory, current_app, request, redirect
 from flask_migrate import Migrate
 from models import db, User
 from flask_login import LoginManager, login_required, current_user
@@ -81,6 +81,14 @@ def create_app():
         """
         return send_from_directory(app.static_folder, "index.html")
 
+    @app.route("/go-home", methods=["GET", "POST"])
+    @login_required
+    def go_home():
+        """
+        Direct redirect to home page. Use this for form actions or direct navigation.
+        """
+        return redirect("/", code=302)
+    
     @app.route("/admin")
     @app.route("/admin/")
     def serve_admin():
