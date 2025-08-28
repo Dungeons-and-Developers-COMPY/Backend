@@ -55,8 +55,10 @@ def get_question_stats(question_number):
 def get_random_question_by_difficulty(difficulty):
     """
     Returns a random question with the given difficulty level.
+    Ensures all questions are cycled through before repeating.
     """
     try:
+        # Fetch all questions of this difficulty
         questions = Question.query.filter(
             db.func.lower(Question.difficulty) == difficulty.lower()
         ).all()
@@ -64,7 +66,21 @@ def get_random_question_by_difficulty(difficulty):
         if not questions:
             return jsonify({"error": f"No questions found for difficulty '{difficulty}'."}), 404
 
-        question = random.choice(questions)
+        # Session key specific to this difficulty
+        session_key = f"shuffled_questions_{difficulty.lower()}"
+
+        # Initialize shuffled order if not in session or empty
+        if session_key not in session or not session[session_key]:
+            q_ids = [q.id for q in questions]
+            random.shuffle(q_ids)
+            session[session_key] = q_ids
+
+        # Pop the next question ID
+        qid = session[session_key].pop()
+        session.modified = True  # ensure Flask saves session changes
+
+        # Retrieve the actual question
+        question = Question.query.get(qid)
 
         return jsonify({
             "id": question.id,

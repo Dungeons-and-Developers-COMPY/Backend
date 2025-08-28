@@ -376,3 +376,36 @@ def reset_times():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Failed to reset times: {str(e)}"}), 500
+
+
+@server_bp.route("/remove-from-leaderboard", methods=["POST"])
+@role_required(["admin"])
+def remove_from_leaderboard():
+    """
+    Removes a player from the leaderboard by resetting their time_taken to 0.0.
+    Only accessible by admins.
+
+    Expected JSON body:
+    {
+        "username": "student1"
+    }
+    """
+    data = request.get_json(silent=True)
+    if not data or "username" not in data:
+        return jsonify({"error": "Missing username"}), 400
+
+    username = data["username"]
+    user = User.query.filter_by(username=username).first()
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    try:
+        user.time_taken = 0.0
+        db.session.commit()
+        return jsonify({
+            "message": f"{username} has been removed from the leaderboard"
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to remove user: {str(e)}"}), 500

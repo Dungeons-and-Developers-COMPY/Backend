@@ -691,15 +691,21 @@ def get_all_tags():
     """
     Returns a list of all unique tags used across all questions.
     """
+    # Fetch only the tags column
     questions = Question.query.with_entities(Question.tags).all()
 
     tag_set = set()
     for q in questions:
         if q.tags:
+            # Split by comma, strip spaces, normalize to lowercase
             tag_list = [tag.strip().lower() for tag in q.tags.split(",") if tag.strip()]
             tag_set.update(tag_list)
 
-    return jsonify(sorted(tag_set))
+    # Optional: capitalize first letter of each tag for display
+    unique_tags = [tag.capitalize() for tag in tag_set]
+
+    # Return sorted list
+    return jsonify(sorted(unique_tags))
 
 
 # ------------------ Get a Question's difficulty ------------------
@@ -880,7 +886,7 @@ def reset_all_stats():
 @login_required 
 def get_all_question_pass_stats():
     """
-    Publicly viewable pass stats per question.
+    View pass stats per question including correct and incorrect submissions.
     """
     questions = Question.query.all()
     results = []
@@ -894,15 +900,20 @@ def get_all_question_pass_stats():
             total_attempts += stat.data.get("attempts", 0)
             total_passed += stat.data.get("passed", 0)
 
+        total_failed = total_attempts - total_passed
         pass_rate = (total_passed / total_attempts * 100) if total_attempts > 0 else 0
 
         results.append({
             "id": q.id,
             "title": q.title,
+            "total_attempts": total_attempts,
+            "total_passed": total_passed,
+            "total_failed": total_failed,
             "pass_rate": round(pass_rate, 2)
         })
 
     return jsonify(results)
+
 # ------------------ Admin Login ------------------
 @bp.route("/login", methods=["POST"])
 def login():

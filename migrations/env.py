@@ -1,5 +1,5 @@
 from logging.config import fileConfig
-
+import os
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
@@ -14,9 +14,14 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
+config_file = config.config_file_name
+if config_file:
+    # Resolve absolute path
+    config_file_path = os.path.abspath(config_file)
+    if os.path.exists(config_file_path):
+        fileConfig(config_file_path)
+    else:
+        print(f"Warning: alembic.ini not found at {config_file_path}, skipping logging setup")
 # add your model's MetaData object here
 # for 'autogenerate' support
 # from myapp import mymodel
