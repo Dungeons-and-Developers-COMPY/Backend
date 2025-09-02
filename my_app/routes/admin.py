@@ -997,3 +997,101 @@ def logout():
     """
     logout_user()
     return jsonify({"message": "Logged out"})
+
+
+# ------------------ Add Manual Submission to Tag Only ------------------
+@bp.route("/tags/<tag_name>/submissions", methods=["POST"])
+@role_required(["admin"])
+def add_submission_to_tag(tag_name):
+    """
+    Manually adds a correct or incorrect submission directly to a tag's statistics.
+    This ONLY affects tag-level stats, not individual question submission counts.
+    Admin-only route.
+    
+    Expected JSON body:
+    {
+        "passed": true/false
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Missing JSON body"}), 400
+        
+        passed = data.get("passed")
+        if passed is None:
+            return jsonify({"error": "Missing 'passed' field (true/false)"}), 400
+        
+        # Decode URL-encoded tag name
+        tag_name = urllib.parse.unquote(tag_name).strip()
+        
+        # Check if this tag exists in any question
+        questions = Question.query.all()
+        tag_exists = False
+        reference_question_id = None
+        
+        for q in questions:
+            if q.tags:
+                question_tags = [tag.strip().lower() for tag in q.tags.split(",") if tag.strip()]
+                if tag_name.lower() in question_tags:
+                    tag_exists = True
+                    reference_question_id = q.id
+                    break
+        
+        if not tag_exists:
+            return jsonify({"error": f"Tag '{tag_name}' not found in any questions"}), 404
+        
+        # Find existing QuestionStat for this tag, or create one
+        # We need a question_id as a reference, but we're only updating tag-level stats
+        stat = QuestionStat.query.filter_by(tag=tag_name).first()
+        
+        if not stat:
+            # Create new stat record using the reference question
+            stat = QuestionStat(
+                question_id=reference_question_id, 
+                tag=tag_name, 
+                data={"attempts": 0, "passed": 0}
+            )
+            db.session.add(stat)
+        
+        # Manually update ONLY the tag statistics (not question-level stats)
+        current_attempts = stat.data.get("attempts", 0)
+        current_passed = stat.data.get("passed", 0)
+        
+        # Update the tag stats directly
+        stat.data = {
+            "attempts": current_attempts + 1,
+            "passed": current_passed + (1 if bool(passed) else 0)
+        }
+        
+        # Force SQLAlchemy to detect the change
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(stat, 'data')
+        
+        db.session.commit()
+        
+        # Calculate response stats
+        new_attempts = stat.data["attempts"]
+        new_passed = stat.data["passed"]
+        new_failed = new_attempts - new_passed
+        pass_rate = round((new_passed / new_attempts * 100), 2) if new_attempts > 0 else 0.0
+        
+        return jsonify({
+            "success": True,
+            "message": f"Tag-only submission recorded for '{tag_name}'",
+            "tag": tag_name,
+            "submission_passed": bool(passed),
+            "note": "Only tag statistics were updated, not question submission counts",
+            "updated_stats": {
+                "total_attempts": new_attempts,
+                "total_passed": new_passed,
+                "total_failed": new_failed,
+                "pass_rate": pass_rate
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error adding tag-only submission to {tag_name}: {str(e)}")
+        logger.debug(traceback.format_exc())
+        return jsonify({"error": f"Failed to add tag submission: {str(e)}"}), 500

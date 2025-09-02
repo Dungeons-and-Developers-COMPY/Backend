@@ -17,7 +17,7 @@ except Exception:
 
 if login.status_code == 200:
     # 2. Test listing servers (optional check)
-    list_servers = session.get("https://dungeonsanddevelopers.cs.uct.ac.za/server/list")
+    list_servers = session.get("https://dungeonsanddevelopers.cs.uct.ac.za/server/leaderboard")
     print(f"\nList Status: {list_servers.status_code}")
     try:
         print(f"List Response: {list_servers.json()}")
@@ -25,15 +25,15 @@ if login.status_code == 200:
         print(f"List Response (raw): {list_servers.text}")
 
     # 3. Remove a player from leaderboard
-    remove_data = {
-        "username": "student001"   # 🔹 Change this to the username you want to remove
-    }
-    remove = session.post(
-        "https://dungeonsanddevelopers.cs.uct.ac.za/server/remove-from-leaderboard",
-        json=remove_data
-    )
-    print(f"\nRemove Status: {remove.status_code}")
-    try:
-        print(f"Remove Response: {remove.json()}")
-    except:
-        print(f"Remove Response (raw): {remove.text}")
+    #remove_data = {
+    #    "username": "student001"   # 🔹 Change this to the username you want to remove
+    #}
+    #remove = session.post(
+    #    "https://dungeonsanddevelopers.cs.uct.ac.za/server/remove-from-leaderboard",
+    #    json=remove_data
+    #)
+    #print(f"\nRemove Status: {remove.status_code}")
+    #try:
+    #    print(f"Remove Response: {remove.json()}")
+    #except:
+    #    print(f"Remove Response (raw): {remove.text}")

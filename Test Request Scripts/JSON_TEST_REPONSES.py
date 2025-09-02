@@ -5,6 +5,10 @@ BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za"
 USERNAME = "Ibrahim"
 PASSWORD = "Dnd4Ever!"
 
+# --- Configure your submission here ---
+TAG_NAME = "abs"  # Change this to the tag you want
+PASSED = True        # Change this to False for incorrect submission
+
 # --- Start a session ---
 session = requests.Session()
 
@@ -20,15 +24,31 @@ try:
 except Exception:
     print("Login response (raw):", login_resp.text)
 
+if login_resp.status_code != 200:
+    print("Login failed, exiting...")
+    exit(1)
 
-# --- Get leaderboard ---
-leaderboard_url = f"{BASE_URL}/server/leaderboard"
-leaderboard_resp = session.get(leaderboard_url)
+# --- Add single submission to tag ---
+print(f"\n--- Adding {'CORRECT' if PASSED else 'INCORRECT'} submission to tag '{TAG_NAME}' ---")
 
-print("\n--- Leaderboard Response ---")
+submission_url = f"{BASE_URL}/admin/tags/{TAG_NAME}/submissions"
+submission_resp = session.post(
+    submission_url,
+    json={"passed": PASSED}
+)
+
+print(f"Status: {submission_resp.status_code}")
+
 try:
-    print(leaderboard_resp.json())
+    response_data = submission_resp.json()
+    if submission_resp.status_code == 200:
+        stats = response_data.get("updated_stats", {})
+        print(f"✅ Success! Updated stats for '{TAG_NAME}':")
+        print(f"   Total Attempts: {stats.get('total_attempts')}")
+        print(f"   Total Passed: {stats.get('total_passed')}")
+        print(f"   Total Failed: {stats.get('total_failed')}")
+        print(f"   Pass Rate: {stats.get('pass_rate')}%")
+    else:
+        print(f"❌ Error: {response_data.get('error', 'Unknown error')}")
 except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", leaderboard_resp.status_code)
-    print("Raw response:", leaderboard_resp.text)
+    print(f"Non-JSON response: {submission_resp.text}")
