@@ -1,6 +1,6 @@
-# Backend
+# Dungeons & Developers Backend
 
-LOG INTO UCT VPN FIRST!!!
+Firstly, make sure to either be located on the UCT campus premises or use the UCT VPN the do the following tasks.
 
 ## Copy files to server
 Windows:
@@ -22,7 +22,7 @@ https://dungeonsanddevelopers.cs.uct.ac.za
 https://dungeonsanddevelopers.cs.uct.ac.za/admin
 ```
 
-The followign tables provide an overview of all backend routes for **Dungeons & Developers**, including Admin, Student, and Server endpoints, along with their access permissions and descriptions.
+The following tables provide an overview of all backend routes for **Dungeons & Developers**, including Admin, Student, and Server endpoints, along with their access permissions and descriptions.
 
 ## Admin Routes
 
