@@ -4,6 +4,7 @@ Firstly, make sure to either be located on the UCT campus premises or use the UC
 
 ## Copy files to server
 Windows:
+You will need to specify the route that the files should be copied to on your respective Virtual Machine.
 ```Python
 scp -r Backend/my_app abdibr008@dnd-vm-1.cs.uct.ac.za:
 ```
