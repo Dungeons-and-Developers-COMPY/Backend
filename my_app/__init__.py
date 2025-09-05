@@ -1,3 +1,28 @@
+"""
+    Creates and configures the Flask application.
+
+    This function initializes the Flask app with extensions, blueprints,
+    login manager, static file serving, and session configuration.
+
+    Use Cases:
+    - Central application factory for running the Flask server
+    - Ensures all blueprints are registered and extensions initialized
+    - Configures secure session cookies and login management
+    - Serves frontend pages and static assets
+
+    Process:
+    1. Initializes Flask app with custom static folder.
+    2. Sets up method override for form _method POST tunneling.
+    3. Configures secret key and session settings.
+    4. Initializes database and migration extensions.
+    5. Configures Flask-Login manager, user loader, and session protection.
+    6. Registers all blueprints for admin, questions, student, and server routes.
+    7. Defines routes to serve frontend pages (login, dashboards, game pages).
+    8. Adds catch-all route to serve static assets.
+
+    Returns:
+        Flask app instance, fully configured
+"""
 import os
 from flask import Flask, send_from_directory, current_app, request, redirect
 from flask_migrate import Migrate
@@ -6,10 +31,8 @@ from flask_login import LoginManager, login_required, current_user
 from dotenv import load_dotenv
 from datetime import timedelta
 
-# Load environment variables from .env file
 load_dotenv() 
 
-# Initialize extensions
 migrate = Migrate()
 login_manager = LoginManager()
 
@@ -27,10 +50,10 @@ def create_app():
     # Unified secret key configuration
     secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-fallback') 
     app.config['SECRET_KEY'] = secret_key
-    app.secret_key = secret_key  # Keep both for compatibility, but use same value
+    app.secret_key = secret_key 
     
     # Session cookie configuration
-    app.config['SESSION_COOKIE_SECURE'] = True  # Set to True in production with HTTPS
+    app.config['SESSION_COOKIE_SECURE'] = True  
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
@@ -43,18 +66,22 @@ def create_app():
     migrate.init_app(app, db)
 
     # ------------------ Login Manager Setup ------------------
-    # Use the global login_manager instance, don't create a new one
     login_manager.init_app(app)
     login_manager.login_view = 'admin.login'
-    
-    # CRITICAL FIX: Change from 'strong' to 'basic' or None
-    # 'strong' session protection causes intermittent 403 errors
-    login_manager.session_protection = None  # or None for no protection
+    login_manager.session_protection = None 
     
     @login_manager.user_loader
     def load_user(user_id):
         """
-        Callback to reload the user object from the user ID stored in the session.
+        User loader callback for Flask-Login.
+
+        Reloads a user from the database using the user ID stored in the session.
+
+        Args:
+            user_id (str or int): ID of the user stored in session
+
+        Returns:
+            User instance or None if user not found
         """
         return User.query.get(int(user_id))
 
@@ -77,7 +104,12 @@ def create_app():
     @app.route("/")
     def root_login():
         """
-        Serves the main login page.
+        Root login page route.
+
+        Serves the main login page for the application.
+
+        Returns:
+            index.html from the static folder
         """
         return send_from_directory(app.static_folder, "index.html")
 
@@ -85,7 +117,13 @@ def create_app():
     @login_required
     def go_home():
         """
-        Direct redirect to home page. Use this for form actions or direct navigation.
+        Go-home redirect route.
+
+        Used for form submissions or navigation that should redirect the user
+        to the root login page. Requires authentication.
+
+        Returns:
+            302 redirect to '/'
         """
         return redirect("/", code=302)
     
@@ -93,16 +131,28 @@ def create_app():
     @app.route("/admin/")
     def serve_admin():
         """
-        Serves the admin dashboard page.
+        Admin dashboard page route.
+
+        Serves the admin interface for managing questions, users, and statistics.
+
+        Returns:
+            admin.html from the static folder
         """
         return send_from_directory(app.static_folder, "admin.html")
+
 
     @app.route("/student")
     @login_required
     def serve_student():
         """
-        Serves the student dashboard page.
-        Ensures the logged-in user has the 'student' role.
+        Student dashboard page route.
+
+        Serves the main student interface. Requires authentication and
+        ensures the logged-in user has the 'student' role.
+
+        Returns:
+            student.html from the static folder
+            or 403 if user is not a student
         """
         if current_user.role != "student":
             return "Unauthorized", 403
@@ -112,8 +162,14 @@ def create_app():
     @login_required
     def serve_student_1v1():
         """
-        Serves the 1v1 game page.
-        Ensures the logged-in user has the 'student' role.
+        1v1 game page route for students.
+
+        Serves the 1v1 game interface. Requires authentication and
+        student role.
+
+        Returns:
+            student/1v1.html from the static folder
+            or 403 if user is not a student
         """
         if current_user.role != "student":
             return "Unauthorized", 403
@@ -123,8 +179,14 @@ def create_app():
     @login_required
     def serve_student_2v2():
         """
-        Serves the 2v2 game page.
-        Ensures the logged-in user has the 'student' role.
+        2v2 game page route for students.
+
+        Serves the 2v2 game interface. Requires authentication and
+        student role.
+
+        Returns:
+            student/2v2.html from the static folder
+            or 403 if user is not a student
         """
         if current_user.role != "student":
             return "Unauthorized", 403
@@ -135,7 +197,16 @@ def create_app():
     @app.route("/<path:path>")
     def catch_all(path):
         """
-        Serves static assets such as JS bundles, CSS, fonts, etc.
+        Catch-all route for static assets.
+
+        Serves JS bundles, CSS files, fonts, images, and other static content.
+        If the requested asset does not exist, returns 404.
+
+        Args:
+            path (str): Path of the requested static asset
+
+        Returns:
+            File from the static folder or 404 if not found
         """
         full_path = os.path.join(app.static_folder, path)
         if os.path.exists(full_path):

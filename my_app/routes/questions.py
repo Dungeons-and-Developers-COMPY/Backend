@@ -1,3 +1,14 @@
+"""
+Flask Blueprint for handling coding questions and related operations.
+
+This module provides endpoints for:
+- Retrieving all questions
+- Getting question statistics 
+- Fetching random questions by difficulty level
+
+The blueprint uses Flask-SQLAlchemy models and Flask sessions for state management.
+"""
+
 from flask import Blueprint, request, jsonify, session, send_from_directory, g
 from models import db, Question, QuestionStat, User
 from werkzeug.security import check_password_hash
@@ -15,8 +26,15 @@ qbp = Blueprint('questions', __name__)
 def get_questions():
     """
     Returns a list of all coding questions.
+    
+    Retrieves all questions from the database and returns them as JSON
+    with essential fields including id, title, prompt, difficulty, etc.
+    
+    Returns:
+        JSON array of question objects
     """
     questions = Question.query.all()
+    
     return jsonify([{
         "id": q.id,
         "title": q.title,
@@ -33,7 +51,17 @@ def get_questions():
 def get_question_stats(question_number):
     """
     Retrieves attempt and pass stats for a given question.
+    
+    Looks up statistics for a specific question by question_number
+    and returns aggregated data about attempts and passes.
+    
+    Args:
+        question_number (int): The unique question number to get stats for
+        
+    Returns:
+        JSON array of stat objects or error message
     """
+
     question = Question.query.filter_by(question_number=question_number).first()
     if not question:
         return jsonify({"error": f"Question {question_number} not found"}), 404
@@ -56,9 +84,18 @@ def get_random_question_by_difficulty(difficulty):
     """
     Returns a random question with the given difficulty level.
     Ensures all questions are cycled through before repeating.
+    
+    Uses Flask session to maintain a shuffled list of question IDs
+    for each difficulty level, ensuring fair distribution without
+    immediate repeats until all questions have been seen.
+    
+    Args:
+        difficulty (str): The difficulty level (e.g., 'easy', 'medium', 'hard')
+        
+    Returns:
+        JSON object with question details or error message
     """
     try:
-        # Fetch all questions of this difficulty
         questions = Question.query.filter(
             db.func.lower(Question.difficulty) == difficulty.lower()
         ).all()
@@ -66,21 +103,20 @@ def get_random_question_by_difficulty(difficulty):
         if not questions:
             return jsonify({"error": f"No questions found for difficulty '{difficulty}'."}), 404
 
-        # Session key specific to this difficulty
         session_key = f"shuffled_questions_{difficulty.lower()}"
 
-        # Initialize shuffled order if not in session or empty
+
         if session_key not in session or not session[session_key]:
             q_ids = [q.id for q in questions]
             random.shuffle(q_ids)
             session[session_key] = q_ids
 
-        # Pop the next question ID
-        qid = session[session_key].pop()
-        session.modified = True  # ensure Flask saves session changes
 
-        # Retrieve the actual question
+        qid = session[session_key].pop()
+        session.modified = True
+
         question = Question.query.get(qid)
+
 
         return jsonify({
             "id": question.id,

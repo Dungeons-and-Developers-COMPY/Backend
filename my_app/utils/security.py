@@ -1,4 +1,3 @@
-# utils/security.py
 from flask_login import current_user, login_required
 from functools import wraps
 from flask import abort

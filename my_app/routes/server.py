@@ -1,39 +1,58 @@
-# server.py - New blueprint file
 from flask import Blueprint, request, jsonify, current_app, redirect
 from flask_login import current_user
 from functools import wraps
 import datetime
 import logging
 from models import User, db
-
-# Your custom decorator
 from functools import wraps
 
-# Create the blueprint
 server_bp = Blueprint('server', __name__)
 
 logger = logging.getLogger(__name__)
 
 active_servers = []
 
-# ------------------ Custom Role Required Decorator ------------------
 def role_required(roles):
     """
-    Decorator to restrict access to certain roles or allow server key auth.
+    Decorator to restrict access to certain user roles or allow server key authentication.
+
+    This decorator is applied to Flask routes to enforce role-based access control
+    while optionally allowing a special server key to bypass normal authentication.
+
+    Use Cases:
+    - Restricting endpoints to specific roles (e.g., admin, student)
+    - Allowing trusted servers to access endpoints via a secret key
+    - Logging unauthorized access attempts for auditing purposes
+
+    Process:
+    1. Converts a single role string into a list if needed.
+    2. Wraps the route function.
+    3. Checks for a valid 'ServerKey' in request headers.
+    - If the key matches, bypasses normal authentication.
+    4. If no server key, checks if the user is authenticated.
+    - Returns 401 error if not authenticated.
+    5. Verifies that the user has one of the required roles.
+    - Returns 403 error and logs a warning if access is denied.
+    6. If all checks pass, executes the original route function.
+
+    Args:
+        roles (str or list[str]): Allowed roles for accessing the endpoint.
+
+    Returns:
+        Decorated function that enforces role-based access control.
     """
+
     if not isinstance(roles, (list, tuple)):
         roles = [roles]
 
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            # --- Check for server key in headers first ---
             server_key = request.headers.get("ServerKey")
             if server_key == "4fIEjhIwkfIIPcU2m4vYDdLe0ZFkDgzh":
                 # Allow bypass with server key
                 return f(*args, **kwargs)
 
-            # --- Fall back to normal user auth ---
             if not current_user.is_authenticated:
                 return jsonify({"error": "Authentication required"}), 401
 
@@ -50,20 +69,32 @@ def role_required(roles):
     return decorator
 
 
-# ------------------ Server Registration ------------------
 @server_bp.route("/register", methods=["POST"])
 @role_required(["admin", "student"])
 def register_server():
     """
     Registers a new game server.
-    Expected JSON body:
-    {
-        "ip": "192.168.1.100",
-        "port": 8080,
-        "type": "1v1",  # or "2v2"
-        "max_players": 2,
-        "current_players": 0
-    }
+
+    Allows admins or students with proper roles to add a server to the active
+    server pool for 1v1 or 2v2 matches. Ensures no duplicates and validates
+    required fields.
+
+    Process:
+    1. Validates JSON body exists.
+    2. Checks required fields: ip, port, type, max_players.
+    3. Validates server type ('1v1' or '2v2').
+    4. Checks if server is already registered.
+    5. Adds server to active_servers list with registration timestamp.
+
+    Request Body:
+        ip (str): Server IP address
+        port (int): Server port
+        type (str): Match type ('1v1' or '2v2')
+        max_players (int): Maximum number of players
+        current_players (int, optional): Current player count (default 0)
+
+    Returns:
+        JSON with confirmation and server info
     """
     data = request.get_json(silent=True)
     if not data:
@@ -108,12 +139,23 @@ def register_server():
 @role_required(["admin", "student"])
 def deregister_server():
     """
-    Deregisters a game server.
-    Expected JSON body:
-    {
-        "ip": "192.168.1.100",
-        "port": 8080
-    }
+    Deregisters an active game server.
+
+    Removes a server from the active server pool for maintenance,
+    shutdown, or cleanup purposes.
+
+    Process:
+    1. Validates JSON body exists.
+    2. Checks required fields: ip, port.
+    3. Searches active_servers for matching server.
+    4. Removes server if found.
+
+    Request Body:
+        ip (str): Server IP address
+        port (int): Server port
+
+    Returns:
+        JSON with confirmation and removed server info
     """
     data = request.get_json(silent=True)
     if not data:
@@ -124,7 +166,6 @@ def deregister_server():
     
     server_key = f"{data['ip']}:{data['port']}"
     
-    # Find and remove server
     for i, server in enumerate(active_servers):
         if f"{server['ip']}:{server['port']}" == server_key:
             removed_server = active_servers.pop(i)
@@ -141,13 +182,23 @@ def deregister_server():
 @role_required(["admin", "student"])
 def update_player_count():
     """
-    Updates the player count for a specific server.
-    Expected JSON body:
-    {
-        "ip": "192.168.1.100",
-        "port": 8080,
-        "current_players": 1
-    }
+    Updates the current player count for a server.
+
+    Ensures accurate tracking of player numbers on each server.
+
+    Process:
+    1. Validates JSON body exists.
+    2. Checks required fields: ip, port, current_players.
+    3. Searches active_servers for matching server.
+    4. Updates current_players count.
+
+    Request Body:
+        ip (str): Server IP address
+        port (int): Server port
+        current_players (int): Number of players currently on the server
+
+    Returns:
+        JSON with confirmation and updated server info
     """
     data = request.get_json(silent=True)
     if not data:
@@ -160,7 +211,6 @@ def update_player_count():
     
     server_key = f"{data['ip']}:{data['port']}"
     
-    # Find and update server
     for server in active_servers:
         if f"{server['ip']}:{server['port']}" == server_key:
             old_count = server["current_players"]
@@ -181,19 +231,25 @@ def update_player_count():
 def find_available_server():
     """
     Finds an available server that isn't full.
-    Query parameters:
-    - type: "1v1" or "2v2" (optional, returns any type if not specified)
-    
-    Returns the IP and port of an available server.
+
+    Helps clients locate a server with free slots for a match.
+
+    Process:
+    1. Reads optional 'type' query parameter ('1v1' or '2v2').
+    2. Filters active_servers by availability and type.
+    3. Returns the first available server.
+
+    Query Parameters:
+        type (str, optional): Server type to filter ('1v1' or '2v2')
+
+    Returns:
+        JSON with available server info or error if none found
     """
     server_type = request.args.get("type")
     
-    # Filter servers by type if specified
     available_servers_list = []
     for server in active_servers:
-        # Check if server has available slots
         if server["current_players"] < server["max_players"]:
-            # If type is specified, filter by type
             if server_type is None or server["type"] == server_type:
                 available_servers_list.append(server)
     
@@ -202,8 +258,7 @@ def find_available_server():
         if server_type:
             error_msg += f" for type '{server_type}'"
         return jsonify({"error": error_msg}), 404
-    
-    # Return the first available server (you could implement load balancing here)
+
     selected_server = available_servers_list[0]
     
     return jsonify({
@@ -223,6 +278,15 @@ def find_available_server():
 def list_servers():
     """
     Lists all active servers with their current status.
+
+    Provides a full overview of servers, including player counts and types.
+
+    Process:
+    1. Reads active_servers list.
+    2. Returns the list with counts and metadata.
+
+    Returns:
+        JSON with count of active servers and their details
     """
     return jsonify({
         "message": f"Found {len(active_servers)} active servers",
@@ -235,6 +299,20 @@ def list_servers():
 def get_server_status(server_ip, server_port):
     """
     Gets the status of a specific server.
+
+    Fetches server information based on IP and port.
+
+    Process:
+    1. Extracts server_ip and server_port from URL.
+    2. Searches active_servers for a match.
+    3. Returns server info if found.
+
+    URL Parameters:
+        server_ip (str): IP of the server
+        server_port (int): Port of the server
+
+    Returns:
+        JSON with server info or error if not found
     """
     server_key = f"{server_ip}:{server_port}"
     
@@ -252,7 +330,16 @@ def get_server_status(server_ip, server_port):
 @role_required(["admin", "student"])
 def health_check():
     """
-    Health check endpoint for the server management system.
+    Health check endpoint for server management system.
+
+    Provides basic operational status and number of active servers.
+
+    Process:
+    1. Counts active_servers.
+    2. Returns system health and timestamp.
+
+    Returns:
+        JSON with 'healthy' status, active server count, and timestamp
     """
     return jsonify({
         "status": "healthy",
@@ -265,12 +352,34 @@ def health_check():
 def decrement_player_count():
     """
     Decrements the player count for a specific server by 1.
-    Expected JSON body:
-    {
-        "ip": "192.168.1.100",
-        "port": 8080
-    }
+
+    This endpoint allows admins or students to update server availability
+    when a player leaves. It ensures that the current player count does not
+    drop below zero and maintains accurate tracking of active server slots.
+
+    Use Cases:
+    - Player disconnects or leaves a match
+    - Keeping server availability information accurate
+    - Managing server load dynamically
+
+    Process:
+    1. Validates that the JSON body exists.
+    2. Checks required fields: ip and port.
+    3. Searches active_servers for the server with matching IP and port.
+    4. Decrements current_players by 1, ensuring it doesn't go below 0.
+    5. Logs the change and returns updated server information.
+
+    Request Body:
+        ip (str): Server IP address
+        port (int): Server port
+
+    Returns:
+        JSON response containing:
+            - message (str): Confirmation message
+            - server_info (dict): Updated server information
+        Or error JSON if server not found or missing fields.
     """
+
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "Missing JSON body"}), 400
@@ -280,11 +389,9 @@ def decrement_player_count():
     
     server_key = f"{data['ip']}:{data['port']}"
     
-    # Find and update server
     for server in active_servers:
         if f"{server['ip']}:{server['port']}" == server_key:
             old_count = server["current_players"]
-            # Ensure the count doesn't go below 0
             if old_count > 0:
                 server["current_players"] -= 1
             
@@ -305,7 +412,17 @@ def decrement_player_count():
 @role_required(["admin", "student"])
 def leaderboard():
     """
-    Returns all users with non-zero time_taken, sorted by time (ascending).
+    Returns leaderboard of users sorted by time_taken.
+
+    Provides an ordered list of users with non-zero completion times.
+
+    Process:
+    1. Queries User database for time_taken > 0.
+    2. Orders by ascending time_taken.
+    3. Returns username and time for each user.
+
+    Returns:
+        JSON list of users and their times
     """
     users = User.query.filter(User.time_taken > 0).order_by(User.time_taken.asc()).all()
     result = [
@@ -319,12 +436,22 @@ def leaderboard():
 @role_required(["admin", "student"])
 def update_time():
     """
-    Updates a user's time_taken if the new time is faster (smaller).
-    Expected JSON:
-    {
-        "username": "student1",
-        "time": 12.34
-    }
+    Updates a user's time_taken if the new time is faster.
+
+    Ensures leaderboard only keeps fastest completion times.
+
+    Process:
+    1. Validates JSON body exists with username and time.
+    2. Converts time to float.
+    3. Fetches user from database.
+    4. Updates time_taken if new time is faster or previous is 0.
+
+    Request Body:
+        username (str): Username of the user
+        time (float): New completion time
+
+    Returns:
+        JSON with success status, message, and updated time
     """
     data = request.get_json(silent=True)
     if not data or "username" not in data or "time" not in data:
@@ -364,8 +491,18 @@ def update_time():
 @role_required(["admin"])
 def reset_times():
     """
-    Resets all users' time_taken back to 0.0.
-    Only accessible by admins.
+    Resets all users' time_taken to 0.0.
+
+    Only accessible by admins. Useful for starting new competitions or
+    clearing the leaderboard.
+
+    Process:
+    1. Fetches all users.
+    2. Sets time_taken to 0.0 for each.
+    3. Commits changes.
+
+    Returns:
+        JSON with confirmation message or error if failed
     """
     try:
         users = User.query.all()
@@ -382,13 +519,20 @@ def reset_times():
 @role_required(["admin"])
 def remove_from_leaderboard():
     """
-    Removes a player from the leaderboard by resetting their time_taken to 0.0.
-    Only accessible by admins.
+    Removes a user from the leaderboard.
 
-    Expected JSON body:
-    {
-        "username": "student1"
-    }
+    Admin endpoint to reset a user's time_taken to 0.0.
+
+    Process:
+    1. Validates JSON body exists with username.
+    2. Fetches user from database.
+    3. Sets time_taken to 0.0 and commits changes.
+
+    Request Body:
+        username (str): Username of the user to remove
+
+    Returns:
+        JSON with confirmation or error message
     """
     data = request.get_json(silent=True)
     if not data or "username" not in data:

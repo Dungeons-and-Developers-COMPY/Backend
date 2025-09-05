@@ -4,8 +4,9 @@ LOG INTO UCT VPN FIRST!!!
 
 ## Copy files to server
 Windows:
+```Python
 scp -r Backend/my_app abdibr008@dnd-vm-1.cs.uct.ac.za:
-
+```
 ## Running code on the server
 ```Python
 cd Backend
@@ -15,145 +16,69 @@ On the UCT server launch in detached mode (-d) so it runs after the window is cl
 ```Python
 sudo docker compose up -d
 ```
-Acess the admin portal through the following link:
+Acess the webpage and admin panel through the following link:
 ```Python
-[http://http://137.158.61.244:5000/admin](https://dungeonsanddevelopers.cs.uct.ac.za/admin)
+https://dungeonsanddevelopers.cs.uct.ac.za
+https://dungeonsanddevelopers.cs.uct.ac.za/admin
 ```
 
-## API 
+The followign tables provide an overview of all backend routes for **Dungeons & Developers**, including Admin, Student, and Server endpoints, along with their access permissions and descriptions.
 
-There are several API endpoints where you can get information from the database.
+## Admin Routes
 
-### 1.) Run Python code before final submission (POST)
-Code submissions have to be made with the use of a function (func). The parameter can be anything. 
-#### Input
-```Python
-import requests
+| Route | Method | Access | Description |
+|-------|--------|--------|-------------|
+| `/admin/run-code` | POST | Admin + Student | Executes submitted code (optionally base64 encoded) and returns the result. |
+| `/admin/submit/{question number}` | POST | Admin + Student | Evaluates submitted code against stored test cases and updates statistics. |
+| `/admin/manage` | POST | Admin-only | Creates a new user. Admin-only if enabled in config. |
+| `/admin/questions/` | POST | Admin-only | Creates a new coding question with auto-assigned question number. |
+| `/admin/add-admin` | POST | Specific Admins only | Creates a new admin user. |
+| `/admin/questionsAll/` | POST | Admin-only | Returns a list of all questions with metadata. |
+| `/admin/test-delete/{question id}` | POST | Admin-only | Deletes a specific question (alternate method). |
+| `/admin/questions/{question id}` | POST | Admin-only | Updates a question with new data. |
+| `/admin/delete-tag/{tag name}` | POST | Admin-only | Deletes a tag from all questions and related stats. |
+| `/admin/questions/stats/reset` | POST | Specific Admins only | Resets all question statistics. |
+| `/admin/debug-full` | GET | Admin-only | Returns all authentication, session, and request info for debugging. |
+| `/admin/check-auth` | GET | Admin + Student | Returns current user’s authentication and role info. |
+| `/admin/manage` | GET | Admin-only | Lists all users. |
+| `/admin/questions/{question id}` | GET | Admin-only | Retrieves full data for a specific question by ID. |
+| `/admin/overview` | GET | Admin-only | Returns aggregated statistics overview by tags. |
+| `/admin/all-tags` | GET | Admin-only | Returns all unique tags used across questions. |
+| `/admin/question/{question id}/difficulty` | GET | Admin-only | Returns the difficulty level of a specific question. |
+| `/admin/question-pass-stats` | GET | Admin-only | Returns per-question statistics (attempts, passes, failures, pass rate). |
+| `/admin/question/` | GET | Admin | Returns a list of all coding questions with full details. |
+| `/admin/question/stats/{question number}` | GET | Admin | Retrieves attempt and pass stats for the specified question. |
+| `/admin/question/random/{difficulty}` | GET | Admin | Returns a random question of the given difficulty; cycles through all questions before repeating. |
+| `/admin/test-delete/{question id}` | DELETE | Admin-only | Deletes a specific question. |
+| `/admin/delete-tag/{tag name}` | DELETE | Admin-only | Deletes a tag from all questions and related stats. |
+| `/admin/questions/stats/reset` | DELETE | Admin-only | Resets all question statistics. |
 
-BASE_URL = "https://dungeonsanddevelopers.cs.uct.ac.za/admin"
-QUESTION_NUMBER = 2
-TEST_USERNAME = "NAME HERE"
-TEST_PASSWORD = "PASSWORD HERE"
+---
 
-# --- Login ---
-login = requests.post(f"{BASE_URL}/login", json={
-    "username": TEST_USERNAME,
-    "password": TEST_PASSWORD
-})
+## Student Routes
 
-if login.status_code != 200:
-    print("Login failed:", login.text)
-    exit()
+| Route | Method | Access | Description |
+|-------|--------|--------|-------------|
+| `/login` | POST | Student-only | Logs in a student using username and password. Prevents admins from using this route. |
+| `/whoami` | GET | Student-only | Returns information about the currently logged-in student. Requires authentication. |
 
-cookies = login.cookies
-print("Login successful.")
+---
 
-run_resp = requests.post(f"{BASE_URL}/run-code", json={
-    "code": "def func(x): return x * 2",
-    "input": "10"
-}, cookies=cookies)
+## Server Routes
 
-print("\nRun Code Result:")
-print(run_resp.json() if run_resp.ok else run_resp.text)
-
-
-```
-#### Output
-```Python
-{'result': 20, 'success': True}
-```
-
-### 2.) Send Final Submission Attempt to server (POST)
-Code submissions have to be made with the use of a function (func). The parameter can be anything. 
-#### Input
-```Python
-import requests
-
-session = requests.Session()
-
-# Login
-login = session.post(
-    "https://dungeonsanddevelopers.cs.uct.ac.za/admin/login", 
-    json={"username": "NAME HERE", "password": "PASSWORD HERE"}
-)
-
-print("Login Status:", login.status_code)
-try:
-    print("Login Response:", login.json())
-except Exception:
-    print("Login Response (raw):", login.text)
-
-
-question = 5
-response = session.post(
-    f"https://dungeonsanddevelopers.cs.uct.ac.za/admin/submit/{question}",
-    json={"code": r"def func(n): return n"}
-)
-try:
-    print("Response JSON:", response.json())
-except Exception:
-    print("Response Text:", response.text)
-
-```
-
-#### Output
-```Python
-{'message': 'All test cases passed!', 'question_number': 5, 'success': True}
-OR
-{'error': 'Invalid credentials'}
-```
-### 3.) Get a random question for a difficulty (Easy, Medium, Hard) (GET)
-#### Input
-```Python
-import requests
-
-
-difficulty = 'Easy'
-url = f"https://dungeonsanddevelopers.cs.uct.ac.za/questions/random/{difficulty}"
-
-auth = ("Admin_Username", "Admin_Password!")
-
-response = requests.get(url, auth=auth)
-
-try:
-    print(response.json())
-except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
-```
-#### Output
-```Python
-{'difficulty': 'easy', 'id': 1, 'prompt_md': 'Print the following pyramid of stars:\n*\n**\n***\n****\n*****', 'question_number': 1, 'tags': 'loop,print', 'test_cases': '[\n  {\n    "input": "",\n    "output": "*\\n**\\n***\\n****\\n*****"\n  }\n]\n', 'title': 'Pyramid of Stars'}
-OR
-{'error': 'Invalid credentials'}
-```
-
-### 4.) Get submission statistics for a particular question (GET)
-#### Input
-```Python
-import requests
-
-question_number = 3
-url = f"https://dungeonsanddevelopers.cs.uct.ac.za/questions/stats/{question_number}"
-
-auth = ("Admin_Username", "Admin_Password")
-
-response = requests.get(url, auth=auth)
-
-try:
-    print(response.json())
-except Exception:
-    print("Non-JSON response received:")
-    print("Status code:", response.status_code)
-    print("Raw response:", response.text)
-```
-#### Output
-```Python
-[{'tag': 'slicing', 'total_attempts': 6, 'total_passed': 6}]
-OR
-{'error': 'Invalid credentials'}
-```
-
+| Route | Method | Access | Description |
+|-------|--------|--------|-------------|
+| `/server/register` | POST | Admin + Student | Registers a new game server with IP, port, type, and max players. |
+| `/server/deregister` | POST | Admin + Student | Deregisters a game server by IP and port. |
+| `/server/update-players` | POST | Admin + Student | Updates the current player count for a specific server. |
+| `/server/decrement-players` | POST | Admin + Student | Decrements the player count of a specific server by 1. |
+| `/server/update-time` | POST | Admin + Student | Updates a user’s time if the new time is faster. |
+| `/server/reset-times` | POST | Admin-only | Resets all users’ time taken to 0.0. |
+| `/server/remove-from-leaderboard` | POST | Admin-only | Removes a user from the leaderboard (sets time taken to 0.0). |
+| `/server/find-available` | GET | Admin + Student | Finds an available server that isn’t full (optional type filter). |
+| `/server/list` | GET | Admin + Student | Lists all active servers with their current status. |
+| `/server/status/{server ip}/{server port}` | GET | Admin + Student | Retrieves status of a specific server. |
+| `/server/health` | GET | Admin + Student | Returns system health and active server count. |
+| `/server/leaderboard` | GET | Admin + Student | Returns all users with non-zero time taken, sorted ascending. |
 
 

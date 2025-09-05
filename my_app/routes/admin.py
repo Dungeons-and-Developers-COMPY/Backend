@@ -1,3 +1,27 @@
+"""
+Flask Blueprint for Admin and User Management
+
+This module provides a comprehensive Flask blueprint for managing a coding question platform
+with role-based access control, user authentication, question management, and statistics tracking.
+
+Key Features:
+- Role-based access control (admin, student)
+- Code execution and evaluation system
+- Question management (CRUD operations)
+- User authentication and session management
+- Statistics tracking for questions and tags
+- Admin panel functionality
+
+Authentication Methods:
+- Username/password login
+- Special login key for admin access
+
+Access Control:
+- Public endpoints (login, auth check, debug)
+- Admin-only endpoints (user management, question management)
+- Student+Admin endpoints (code submission, code execution)
+"""
+
 from models import Question, db, User, QuestionStat
 from flask import Blueprint, request, jsonify, send_from_directory, current_app, abort, make_response, session
 from flask_login import login_user, logout_user, current_user, login_required
@@ -15,11 +39,28 @@ import urllib
 import re
 from functools import wraps
 
-bp = Blueprint('admin', __name__)
+# =============================================================================
+# BLUEPRINT INITIALIZATION AND UTILITY FUNCTIONS
+# =============================================================================
 
+bp = Blueprint('admin', __name__)
 logger = logging.getLogger(__name__)
 
 def log_submission_error(question_number, user_code, error_type, error_message, failed_case=None, tb=None):
+    """
+    Logs detailed error information for failed code submissions to file system.
+    
+    Creates individual log files per question to track common errors and debugging info.
+    Used for analyzing student submission patterns and improving question quality.
+    
+    Args:
+        question_number (int): The question number that failed
+        user_code (str): The submitted code that caused the error
+        error_type (str): Category of error (SyntaxError, RuntimeError, etc.)
+        error_message (str): Specific error message
+        failed_case (dict, optional): The test case that caused failure
+        tb (str, optional): Full traceback string
+    """
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f"question_{question_number}_errors.txt")
@@ -38,11 +79,28 @@ def log_submission_error(question_number, user_code, error_type, error_message, 
         f.write(user_code)
         f.write("\n" + "-"*60 + "\n\n")
 
-# ------------------ Custom Role Required Decorator ------------------
+# =============================================================================
+# ACCESS CONTROL AND AUTHENTICATION DECORATORS
+# =============================================================================
+
 def role_required(roles):
     """
-    Decorator to restrict access to certain roles.
-    `roles` can be a single string (e.g., "admin") or a list of strings (e.g., ["admin", "student"]).
+    Custom decorator to restrict access to specific user roles.
+    
+    This decorator works in conjunction with the global before_request handler
+    to provide fine-grained access control. It checks that the current user
+    has one of the specified roles before allowing access to the route.
+    
+    Args:
+        roles (str or list): Single role string or list of allowed roles
+        
+    Returns:
+        decorator: Function decorator that enforces role requirements
+        
+    Usage:
+        @role_required(["admin", "student"])
+        def some_route():
+            pass
     """
     if not isinstance(roles, (list, tuple)):
         roles = [roles]
@@ -60,48 +118,53 @@ def role_required(roles):
         return decorated_function
     return decorator
 
-# ------------------ Global Before Request Handler ------------------
+# =============================================================================
+# GLOBAL ACCESS CONTROL HANDLER
+# =============================================================================
+
 @bp.before_request
 def check_access_control():
     """
-    This handler will manage global access control.
-    It should allow certain routes (login, check_auth, debug) to pass without
-    any role check, and for other routes, it will enforce either login
-    or specific roles based on the decorators on the route functions themselves.
+    Global request handler that manages access control for all routes in this blueprint.
+    
+    This handler implements a layered security approach:
+    1. Allows public endpoints (login, auth check, debug) without restrictions
+    2. Requires authentication for all other endpoints
+    3. Enforces admin-only access for administrative endpoints
+    4. Delegates specific role checking to individual route decorators
+    
+    The access control logic is:
+    - Public endpoints: No restrictions
+    - Admin-only endpoints: Must be authenticated admin user
+    - Other endpoints: Must be authenticated (role checked by decorators)
+    
+    Returns:
+        JSON response with error code if access denied, otherwise continues to route
     """
     logger.info(f"Request: {request.method} {request.path}")
     logger.info(f"Endpoint: {request.endpoint}")
 
-    # Allow OPTIONS requests for CORS preflight
     if request.method == 'OPTIONS':
         return
 
     # List of endpoints that are completely public (no login or role required)
-    # These are truly public access points.
     public_endpoints = [
         'admin.login',
         'admin.check_auth',
         'admin.debug_session',
-        'admin.debug_full', # Keep debug_full for easy dev debugging
-        'admin.test_post', # Assuming this is a public test endpoint
-        'admin.logout' # Logout should be accessible to any logged-in user
+        'admin.debug_full', 
+        'admin.test_post', 
+        'admin.logout' 
     ]
 
-    # If the endpoint is public, let it pass immediately
     if request.endpoint in public_endpoints:
         logger.info(f"Allowing public endpoint: {request.endpoint}")
         return
 
-    # For all other endpoints, require authentication by default.
-    # The specific role check will then be handled by `@role_required` decorators
-    # on individual route functions, or by this `before_request` if no other decorator applies.
     if not current_user.is_authenticated:
         logger.warning("Authentication required for endpoint: %s", request.endpoint)
         return jsonify({"error": "Authentication required"}), 401
 
-    # Now, handle routes that are strictly admin-only and are NOT handled by
-    # the specific `@role_required` decorator (because they don't allow students).
-    # This is where your original 'restrict_to_admins' logic truly applies.
     admin_only_endpoints = [
         'admin.manage_users',
         'admin.get_question_page',
@@ -121,22 +184,30 @@ def check_access_control():
             logger.warning(f"Access denied: User {current_user.username} (role: {current_user.role}) attempted to access admin-only endpoint: {request.endpoint}")
             return jsonify({"error": "Admin access required"}), 403
         logger.info(f"Admin access granted for endpoint: {request.endpoint}")
-        return # Admin allowed, proceed to route function
+        return 
 
-    # If an endpoint reaches here, it means:
-    # 1. It's not in public_endpoints.
-    # 2. It's not in admin_only_endpoints (or it was and an admin passed).
-    # 3. The user IS authenticated.
-    # This implies that specific `@role_required` (like for 'admin' or 'student')
-    # or `@login_required` (from Flask-Login) will handle the final authorization
-    # on the route function itself.
     logger.info(f"Proceeding to endpoint handler for {request.endpoint}. Specific decorators will handle roles.")
 
+# =============================================================================
+# DEBUG AND DEVELOPMENT ENDPOINTS
+# =============================================================================
 
 @bp.route("/debug-full", methods=["GET"])
 def debug_full():
     """
-    Comprehensive debug endpoint that returns all auth info
+    Comprehensive debug endpoint for development and troubleshooting.
+    
+    Returns detailed information about:
+    - Current user authentication state
+    - Request information (headers, path, method)
+    - Flask-Login configuration
+    - Session data and user ID storage
+    
+    This endpoint is public to allow debugging authentication issues.
+    Should be disabled or restricted in production environments.
+    
+    Returns:
+        JSON object containing comprehensive debug information
     """
     import sys
 
@@ -165,14 +236,32 @@ def debug_full():
 
     return jsonify(debug_info)
 
+# =============================================================================
+# CODE EXECUTION AND EVALUATION SYSTEM
+# =============================================================================
+
 @bp.route("/run-code", methods=["POST"])
 @role_required(["admin", "student"])
 def run_code():
     """
-    Executes submitted code and returns the return value from func().
-    Accepts optional 'input' as a string to pass to func().
-    Code can be base64 encoded to avoid Apache security issues.
-    Only accessible by 'admin' and 'student' roles.
+    Executes user-submitted code in a controlled environment.
+    
+    This endpoint allows both admins and students to test code execution
+    without submitting against specific test cases. Useful for debugging
+    and development of coding solutions.
+    
+    Security considerations:
+    - Code execution is sandboxed to minimize security risks
+    - Only accepts code with a 'func' function defined
+    - Supports base64 encoded code to avoid Apache security restrictions
+    - Input parsing attempts ast.literal_eval before falling back to string
+    
+    Request Body:
+        code (str): Python code (can be base64 encoded)
+        input (str, optional): Input parameter to pass to func()
+        
+    Returns:
+        JSON response with execution result or error information
     """
     data = request.get_json(silent=True)
     if not data or "code" not in data:
@@ -238,10 +327,25 @@ def run_code():
         "result": result
     }), 200
 
+# =============================================================================
+# STATISTICS TRACKING SYSTEM
+# =============================================================================
 
-# ------------------ Submit Code and Record Stats ------------------
 def track_failed_attempt(question):
-    """Helper function to track failed submission stats"""
+    """
+    Records a failed submission attempt in the statistics system.
+    
+    This function updates the QuestionStat records for each tag associated
+    with the question, incrementing the attempt count but not the pass count.
+    Used to track question difficulty and student performance patterns.
+    
+    Args:
+        question (Question): The Question model instance that had a failed attempt
+        
+    Side Effects:
+        - Creates or updates QuestionStat records for each tag
+        - Commits changes to the database
+    """
     tags = (question.tags or "").split(",")
     for tag in tags:
         tag = tag.strip()
@@ -258,9 +362,27 @@ def track_failed_attempt(question):
 @role_required(["admin", "student"])
 def evaluate_and_record_stats(question_number):
     """
-    Accepts user code (potentially base64 encoded), evaluates it against test cases, and records attempt/pass stats.
-    Logs detailed errors to file.
-    Only accessible by 'admin' and 'student' roles.
+    Comprehensive code submission and evaluation endpoint.
+    
+    This is the core endpoint for student code submissions. It:
+    1. Decodes and validates submitted code
+    2. Compiles and executes code in isolated environment
+    3. Runs code against all test cases for the question
+    4. Records success/failure statistics by tag
+    5. Logs detailed error information for failed submissions
+    
+    The evaluation process:
+    - Supports base64 encoded code for Apache compatibility
+    - Validates syntax before execution
+    - Requires a 'func' function to be defined
+    - Tests against all question test cases
+    - Updates QuestionStat records for performance tracking
+    
+    Request Body:
+        code (str): Python code (can be base64 encoded)
+        
+    Returns:
+        JSON response indicating success/failure with detailed feedback
     """
     data = request.get_json(silent=True)
     if not data or "code" not in data:
@@ -434,12 +556,22 @@ def evaluate_and_record_stats(question_number):
         "question_number": question_number
     }), 200
 
+# =============================================================================
+# USER AUTHENTICATION AND SESSION MANAGEMENT
+# =============================================================================
 
-# ------------------ Authentication Check Endpoint ------------------
 @bp.route("/check-auth", methods=["GET"])
 def check_auth():
     """
-    Returns the current user's authentication and role info.
+    Authentication status check endpoint.
+    
+    This public endpoint allows the frontend to verify current user
+    authentication status and retrieve user information without
+    requiring a full login attempt.
+    
+    Returns:
+        JSON object with username and role if authenticated,
+        or error message if not authenticated
     """
     if current_user.is_authenticated:
         return jsonify({
@@ -448,14 +580,32 @@ def check_auth():
         })
     return jsonify({"error": "Not authenticated"}), 401
 
-# ------------------ User Management (Admin Panel) ------------------
+# =============================================================================
+# ADMIN USER MANAGEMENT SYSTEM
+# =============================================================================
+
 @bp.route("/manage", methods=["GET", "POST"])
 @login_required # Ensure user is logged in
 def manage_users():
     """
-    GET: Lists all users.
-    POST: Creates a new user (admin or regular).
-    Access is only granted if ENABLE_ADMIN is True in config AND user is admin.
+    Admin user management interface.
+    
+    GET: Returns list of all users with their roles and IDs
+    POST: Creates new user account with specified role
+    
+    This endpoint requires:
+    1. ENABLE_ADMIN config setting to be True
+    2. Current user to have admin role
+    3. Valid username/password for user creation
+    
+    POST Request Body:
+        username (str): Unique username for new account
+        password (str): Password for new account
+        role (str, optional): User role (defaults to "user")
+        
+    Returns:
+        GET: List of all users
+        POST: Success message with new user ID or error
     """
     if not current_app.config.get("ENABLE_ADMIN"):
         return jsonify({"error": "Admin panel is disabled"}), 403
@@ -486,13 +636,24 @@ def manage_users():
         for u in users
     ])
 
-# ------------------ Get One Question (Admin) ------------------
+# =============================================================================
+# QUESTION MANAGEMENT SYSTEM
+# =============================================================================
+
 @bp.route("/questions/<int:question_id>", methods=["GET"])
 @login_required # Ensure user is logged in
 def get_question_page(question_id):
     """
-    Returns full data for a specific question by ID.
-    Admin-only route.
+    Retrieves complete question data by ID for admin editing.
+    
+    Returns all question fields including test cases, which should only
+    be accessible to administrators for question management purposes.
+    
+    Args:
+        question_id (int): Database ID of the question to retrieve
+        
+    Returns:
+        JSON object with complete question data or error if not found
     """
     # The `check_access_control` before_request will handle the admin role check for this route.
     question = Question.query.get(question_id)
@@ -509,13 +670,25 @@ def get_question_page(question_id):
         "test_cases": question.test_cases
     })
 
-# ------------------ Create Question ------------------
 @bp.route("/questions/", methods=["POST"])
 @login_required # Ensure user is logged in
 def create_question():
     """
-    Creates a new coding question with auto-assigned question_number.
-    Admin-only route.
+    Creates a new coding question with auto-assigned question number.
+    
+    The system automatically assigns the next available question number
+    by finding gaps in the existing sequence or appending to the end.
+    This ensures consistent numbering without manual intervention.
+    
+    Request Body:
+        title (str): Question title
+        prompt_md (str): Markdown-formatted question prompt
+        difficulty (str): Difficulty level
+        tags (str, optional): Comma-separated tags
+        test_cases (str, optional): JSON string of test cases
+        
+    Returns:
+        JSON response with new question number and ID, or error
     """
     # The `check_access_control` before_request will handle the admin role check for this route.
     try:
@@ -552,16 +725,24 @@ def create_question():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-# ------------------ Add New Admin User ------------------
 @bp.route('/add-admin', methods=['POST'])
 @login_required # Ensure user is logged in
 def add_admin():
     """
-    Creates a new admin user.
-    Returns error if username already exists.
-    Restricted to user "Ibrahim" only.
+    Special endpoint for creating admin user accounts.
+    
+    This endpoint has additional restrictions beyond normal admin access:
+    only the user "Ibrahim" can create new admin accounts. This provides
+    an additional layer of security.
+    
+    Request Body:
+        username (str): Username for new admin account
+        password (str): Password for new admin account
+        
+    Returns:
+        JSON response with success/error message and new admin ID
     """
-    # This route has its own specific check after the global admin check.
+
     if current_user.username != "Ibrahim":
         return jsonify({"error": "Only Ibrahim may add admin users"}), 403
 
@@ -586,15 +767,18 @@ def add_admin():
         db.session.rollback()
         return jsonify({"error": f"Failed to create admin: {str(e)}"}), 500
 
-# ------------------ List All Questions ------------------
 @bp.route('/questionsAll/', methods=["POST"])
-@login_required # Ensure user is logged in
+@login_required 
 def list_questions():
     """
-    Returns a list of all questions with metadata.
-    Admin-only route.
+    Returns metadata for all questions in the system.
+    
+    Provides a summary view of all questions without sensitive information
+    like test cases. Used for admin question management interfaces.
+    
+    Returns:
+        JSON array of question objects with basic metadata
     """
-    # The `check_access_control` before_request will handle the admin role check for this route.
     questions = Question.query.all()
     data = [
         {
@@ -608,12 +792,29 @@ def list_questions():
     ]
     return jsonify(data)
 
-# ------------------ Stats Overview By Tag ------------------
+# =============================================================================
+# STATISTICS AND ANALYTICS SYSTEM
+# =============================================================================
+
 @bp.route("/overview", methods=["GET"])
 @login_required
 def get_tag_overview():
     """
-    Publicly viewable stats overview.
+    Generates comprehensive statistics overview by question tags.
+    
+    This endpoint aggregates submission statistics across all questions,
+    grouping by tags to provide insights into:
+    - Total attempts per topic area
+    - Success rates by tag
+    - Performance trends across different question categories
+    
+    The system handles:
+    - Case-insensitive tag matching
+    - Missing or empty tag fields
+    - Tags that exist in questions but have no submission data
+    
+    Returns:
+        JSON array of tag statistics with attempt counts and pass rates
     """
     try:
         stat_rows = db.session.query(
@@ -661,13 +862,25 @@ def get_tag_overview():
         current_app.logger.debug(traceback.format_exc())
         return jsonify({"error": "Failed to generate stats"}), 500
 
+# =============================================================================
+# QUESTION AND TAG MANAGEMENT
+# =============================================================================
 
-# ------------------ Delete a Question ------------------
 @bp.route("/test-delete/<int:question_id>", methods=["DELETE","POST"])
 @login_required # Ensure user is logged in
 def delete_question_via_post(question_id):
     """
-    Admin-only route.
+    Deletes a question from the system.
+    
+    Supports both DELETE requests and POST requests with method override
+    for compatibility with HTML forms. When a question is deleted, all
+    associated statistics and test cases are also removed.
+    
+    Args:
+        question_id (int): Database ID of question to delete
+        
+    Returns:
+        JSON response confirming deletion or error if question not found
     """
     # The `check_access_control` before_request will handle the admin role check for this route.
     if request.method == "POST" and request.form.get("_method", "").upper() != "DELETE":
@@ -683,13 +896,27 @@ def delete_question_via_post(question_id):
     db.session.commit()
     return jsonify({"message": f"Question {question_id} deleted"}), 200
 
-
-# ------------------ Get all Tags ------------------
+# =============================================================================
+# TAG SYSTEM AND METADATA QUERIES
+# =============================================================================
 
 @bp.route("/all-tags", methods=["GET"])
 def get_all_tags():
     """
-    Returns a list of all unique tags used across all questions.
+    Returns comprehensive list of all unique tags across all questions.
+    
+    This endpoint analyzes all questions in the database to extract and
+    normalize tags, providing a complete vocabulary of available tags.
+    Used for tag management interfaces and validation.
+    
+    Processing includes:
+    - Comma-separated tag parsing
+    - Whitespace trimming and normalization
+    - Case normalization (lowercase for comparison, capitalized for display)
+    - Duplicate removal and alphabetical sorting
+    
+    Returns:
+        JSON array of unique, sorted tag names
     """
     # Fetch only the tags column
     questions = Question.query.with_entities(Question.tags).all()
@@ -707,13 +934,20 @@ def get_all_tags():
     # Return sorted list
     return jsonify(sorted(unique_tags))
 
-
-# ------------------ Get a Question's difficulty ------------------
-
 @bp.route("/question/<int:question_id>/difficulty", methods=["GET"])
 def get_question_difficulty(question_id):
     """
-    Returns the difficulty level of a specific question by ID.
+    Retrieves difficulty level for a specific question.
+    
+    This lightweight endpoint returns only the difficulty rating
+    without other question details. Used for filtering and
+    display purposes in student interfaces.
+    
+    Args:
+        question_id (int): Database ID of the question
+        
+    Returns:
+        JSON object with difficulty level or error if not found
     """
     question = Question.query.get(question_id)
 
@@ -722,13 +956,37 @@ def get_question_difficulty(question_id):
 
     return jsonify({"difficulty": question.difficulty.lower().strip() if question.difficulty else None})
 
-# ------------------ Update Question ------------------
+# =============================================================================
+# QUESTION UPDATE AND MODIFICATION SYSTEM
+# =============================================================================
+
 @bp.route("/questions/<int:question_id>", methods=["POST", "PUT"])
 @login_required # Ensure user is logged in
 def update_question(question_id):
     """
-    Updates a question with new data.
-    Admin-only route.
+    Updates existing question with new data.
+    
+    Supports both PUT requests and POST requests with method override
+    for HTML form compatibility. Allows partial updates - only provided
+    fields are modified, others remain unchanged.
+    
+    Request formats supported:
+    1. JSON PUT request with data in body
+    2. POST request with _method=PUT and JSON data in form field
+    
+    Args:
+        question_id (int): Database ID of question to update
+        
+    Request Body:
+        title (str, optional): New question title
+        prompt_md (str, optional): New markdown prompt
+        difficulty (str, optional): New difficulty level
+        tags (str, optional): New comma-separated tags
+        question_number (int, optional): New question number
+        test_cases (str, optional): New JSON test cases
+        
+    Returns:
+        JSON response confirming update or error
     """
     # The `check_access_control` before_request will handle the admin role check for this route.
     if request.method == "POST":
@@ -761,12 +1019,34 @@ def update_question(question_id):
     db.session.commit()
     return jsonify({"message": "Question updated"})
 
+# =============================================================================
+# TAG DELETION AND CLEANUP SYSTEM
+# =============================================================================
 
 @bp.route('/delete-tag/<tag_name>', methods=['POST', 'DELETE'])
 @login_required 
 def delete_tag(tag_name):
     """
-    Admin-only route.
+    Removes a tag from all questions and associated statistics.
+    
+    This powerful admin function performs comprehensive tag cleanup:
+    1. Removes tag from all question tag lists
+    2. Cleans up comma formatting in remaining tags
+    3. Deletes associated QuestionStat records for the tag
+    4. Handles both SQLite and PostgreSQL regex operations
+    
+    The deletion process:
+    - URL-decodes tag name for special characters
+    - Uses case-insensitive matching to find all instances
+    - Updates all affected questions atomically
+    - Removes orphaned statistics records
+    - Provides detailed feedback on affected questions
+    
+    Args:
+        tag_name (str): URL-encoded tag name to delete
+        
+    Returns:
+        JSON response with deletion results and affected question count
     """
     # The `check_access_control` before_request will handle the admin role check for this route.
     try:
@@ -860,14 +1140,34 @@ def delete_tag(tag_name):
             'success': False,
             'message': f'Failed to delete tag: {str(e)}'
         }), 500
-# ------------------ Reset All Question Stats ------------------
+
+# =============================================================================
+# STATISTICS MANAGEMENT AND RESET FUNCTIONALITY
+# =============================================================================
+
 @bp.route("/questions/stats/reset", methods=["DELETE", "POST"])
 @login_required # Ensure user is logged in
 def reset_all_stats():
     """
-    Admin-only route.
+    Resets all question submission statistics to zero.
+    
+    This admin function clears all performance data across
+    the entire system, returning all statistics to initial state.
+    Used for:
+    - Clearing test data during development
+    - Resetting stats at start of new semester/course
+    - Recovering from corrupted statistics data
+    
+    The reset process:
+    - Finds all QuestionStat records
+    - Sets attempts and passed counts to zero
+    - Preserves the record structure for future submissions
+    - Commits changes atomically
+    
+    Returns:
+        JSON confirmation message
     """
-    # The `check_access_control` before_request will handle the admin role check for this route.
+
     if request.method == "POST":
         override = request.form.get("_method", "").upper()
         if override != "DELETE":
@@ -879,14 +1179,31 @@ def reset_all_stats():
     db.session.commit()
     return jsonify({"message": "All question stats have been reset."})
 
-
-# ------------------ Question-Specific Pass Stats ------------------
+# =============================================================================
+# DETAILED ANALYTICS AND REPORTING
+# =============================================================================
 
 @bp.route("/question-pass-stats", methods=["GET"])
 @login_required 
 def get_all_question_pass_stats():
     """
-    View pass stats per question including correct and incorrect submissions.
+    Generates detailed pass/fail statistics for individual questions.
+    
+    This analytics endpoint provides comprehensive performance metrics
+    for each question, enabling identification of:
+    - Questions that are too difficult (low pass rates)
+    - Questions that need better test cases
+    - Overall course performance patterns
+    - Content areas requiring attention
+    
+    Statistics calculated:
+    - Total submission attempts per question
+    - Successful completions (passed all test cases)
+    - Failed attempts and failure rate
+    - Pass rate percentage with rounding
+    
+    Returns:
+        JSON array of question statistics with comprehensive metrics
     """
     questions = Question.query.all()
     results = []
@@ -914,13 +1231,42 @@ def get_all_question_pass_stats():
 
     return jsonify(results)
 
-# ------------------ Admin Login ------------------
+# =============================================================================
+# AUTHENTICATION SYSTEM WITH MULTIPLE LOGIN METHODS
+# =============================================================================
+
 @bp.route("/login", methods=["POST"])
 def login():
     """
-    Handles user login via:
-    - Username/password
-    - 32-character login key
+    Multi-method user authentication endpoint.
+    
+    This endpoint supports two authentication methods:
+    1. Traditional username/password authentication
+    2. Special admin login key for backdoor access
+    
+    Username/Password Flow:
+    - Validates user exists in database
+    - Checks password hash against stored value
+    - Creates authenticated session with user info
+    
+    Login Key Flow:
+    - Accepts 32-character special key
+    - Automatically logs in as designated admin account
+    - Bypasses normal password validation
+    - Used for emergency admin access
+    
+    Both methods result in:
+    - Flask-Login session establishment
+    - Session cookie generation
+    - User role and permissions activation
+    
+    Request Body:
+        username (str, optional): Username for normal login
+        password (str, optional): Password for normal login  
+        login_key (str, optional): Special 32-char admin key
+        
+    Returns:
+        JSON response with success message or authentication error
     """
     data = request.get_json()
     username = data.get("username")
@@ -988,30 +1334,56 @@ def login():
         #"cookie_name": cookie_name
     })
 
-# ------------------ Admin Logout ------------------
 @bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
     """
-    Logs out the current user. Accessible by any logged-in user.
+    User logout endpoint.
+    
+    Terminates the current user session and clears authentication state.
+    Available to any authenticated user regardless of role.
+    
+    Returns:
+        JSON confirmation of logout completion
     """
     logout_user()
     return jsonify({"message": "Logged out"})
 
+# =============================================================================
+# MANUAL STATISTICS ADJUSTMENT SYSTEM
+# =============================================================================
 
-# ------------------ Add Manual Submission to Tag Only ------------------
 @bp.route("/tags/<tag_name>/submissions", methods=["POST"])
 @role_required(["admin"])
 def add_submission_to_tag(tag_name):
     """
-    Manually adds a correct or incorrect submission directly to a tag's statistics.
-    This ONLY affects tag-level stats, not individual question submission counts.
-    Admin-only route.
+    Manual statistics adjustment for specific tags.
     
-    Expected JSON body:
-    {
-        "passed": true/false
-    }
+    This specialized admin endpoint allows direct manipulation of tag-level
+    statistics without requiring actual code submissions. Used for:
+    - Correcting statistical errors
+    - Importing data from external systems  
+    - Testing statistical displays
+    - Manual adjustments for special circumstances
+    
+    IMPORTANT: This only affects tag-level statistics, not individual
+    question submission counts. The statistics are maintained at the
+    tag level to provide aggregate performance metrics.
+    
+    Process:
+    1. Validates tag exists in question database
+    2. Finds or creates QuestionStat record for tag
+    3. Updates attempt and pass counters based on submission type
+    4. Preserves existing question-level submission data
+    
+    Args:
+        tag_name (str): URL-encoded tag name to update
+        
+    Request Body:
+        passed (bool): Whether this submission should count as passed
+        
+    Returns:
+        JSON response with updated statistics and confirmation
     """
     try:
         data = request.get_json()
@@ -1021,11 +1393,9 @@ def add_submission_to_tag(tag_name):
         passed = data.get("passed")
         if passed is None:
             return jsonify({"error": "Missing 'passed' field (true/false)"}), 400
-        
-        # Decode URL-encoded tag name
+
         tag_name = urllib.parse.unquote(tag_name).strip()
-        
-        # Check if this tag exists in any question
+
         questions = Question.query.all()
         tag_exists = False
         reference_question_id = None
@@ -1041,12 +1411,9 @@ def add_submission_to_tag(tag_name):
         if not tag_exists:
             return jsonify({"error": f"Tag '{tag_name}' not found in any questions"}), 404
         
-        # Find existing QuestionStat for this tag, or create one
-        # We need a question_id as a reference, but we're only updating tag-level stats
         stat = QuestionStat.query.filter_by(tag=tag_name).first()
         
         if not stat:
-            # Create new stat record using the reference question
             stat = QuestionStat(
                 question_id=reference_question_id, 
                 tag=tag_name, 
@@ -1054,11 +1421,10 @@ def add_submission_to_tag(tag_name):
             )
             db.session.add(stat)
         
-        # Manually update ONLY the tag statistics (not question-level stats)
+
         current_attempts = stat.data.get("attempts", 0)
         current_passed = stat.data.get("passed", 0)
         
-        # Update the tag stats directly
         stat.data = {
             "attempts": current_attempts + 1,
             "passed": current_passed + (1 if bool(passed) else 0)

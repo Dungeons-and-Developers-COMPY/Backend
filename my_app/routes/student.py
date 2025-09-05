@@ -11,8 +11,34 @@ student_bp = Blueprint('student', __name__)
 def student_login():
     """
     Logs in a student user.
-    Ensures username/password are correct and user has the role 'student'.
+
+    This endpoint authenticates a user with the role 'student' using their
+    username and password. Ensures admins or other roles cannot log in here.
+
+    Use Cases:
+    - Student login for accessing protected student features
+    - Prevents admin users from logging in on the student portal
+    - Validates credentials against hashed passwords in the database
+
+    Process:
+    1. Validates JSON body exists with 'username' and 'password'.
+    2. Fetches user from the database by username.
+    3. Checks password hash against stored password.
+    4. Ensures the user has role 'student' (rejects admins and other roles).
+    5. Logs in the user using Flask-Login.
+
+    Request Body:
+        username (str): The student's username
+        password (str): The student's password
+
+    Returns:
+        JSON response containing:
+            - message (str): Confirmation of login
+            - username (str): Logged-in user's username
+            - role (str): Logged-in user's role
+        Or error JSON if authentication fails or role is invalid
     """
+
     data = request.get_json()
     username = data.get("username")
     password = data.get("password")
@@ -43,8 +69,27 @@ def student_login():
 @student_bp.route("/whoami", methods=["GET"])
 def whoami():
     """
-    Returns the current logged-in user's information.
-    Requires the user to be authenticated.
+    Returns information about the currently logged-in student.
+
+    This endpoint allows authenticated students to verify their session
+    and view basic account info.
+
+    Use Cases:
+    - Displaying current user info in the UI
+    - Verifying session authentication
+    - Restricting access to student-only features
+
+    Process:
+    1. Checks if user is authenticated.
+    2. Ensures user has role 'student'.
+    3. Returns username, role, and authentication status.
+
+    Returns:
+        JSON response containing:
+            - username (str): Logged-in student's username
+            - role (str): Logged-in student's role
+            - is_authenticated (bool): True if session is active
+        Or error JSON if user is not authenticated or not authorized
     """
     if not current_user.is_authenticated:
         return jsonify({"error": "Not authenticated"}), 401
