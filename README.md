@@ -8,22 +8,48 @@ You will need to specify the route that the files should be copied to on your re
 ```Python
 scp -r Backend/my_app abdibr008@dnd-vm-1.cs.uct.ac.za:
 ```
-## Running code on the server
-```Python
-cd Backend
-docker-compose up --build
-```
-On the UCT server launch in detached mode (-d) so it runs after the window is closed.
-```Python
-sudo docker compose up -d
-```
-Acess the webpage and admin panel through the following link:
-```Python
-https://dungeonsanddevelopers.cs.uct.ac.za
-https://dungeonsanddevelopers.cs.uct.ac.za/admin
-```
+# Dungeons & Developers Backend
 
-The following tables provide an overview of all backend routes for **Dungeons & Developers**, including Admin, Student, and Server endpoints, along with their access permissions and descriptions.
+This repository contains the source code and configuration for a containerized web application.  
+It includes backend logic, database migrations, configuration files, and deployment scripts.  
+The project is structured to support development, testing, and production environments using Docker and Docker Compose.
+
+## Project Structure
+
+- my_app/ – Core application source code   
+    - routes/ – Application routes and endpoints
+    - static/ – Static files (CSS, JavaScript, images)  
+    - utils/ – Utility functions and helpers 
+    - __init__.py - Initializer files
+    - package-lock.json – Dependency lock file (for Node/JS frontend parts) 
+    - __pycache__/ - Python bytecode cache
+
+- migrations/ – Database migration files managed with Alembic  
+- Images/ – Static logo image used in the project  
+- windows_server/ – Windows-specific server builds for the Godot game
+- __pycache__/ – Python bytecode cache  
+
+# Core Files
+- run.py – Application entry point  
+- models.py – Database models and schema definitions  
+- config.py – Application configuration settings  
+- alembic.ini – Alembic migration configuration  
+- requirements.txt – Python dependencies  
+- .env – Environment variables (credentials, database URLs, etc.)  
+- README.md – Project documentation  
+
+# Deployment
+- Dockerfile – Docker build instructions for the app  
+- docker-compose.yaml – Multi-container orchestration (app + database)  
+- entrypoint.sh – Container startup script to setup all the 
+- Dockerfile.godot – Alternative Dockerfile for Godot-related components  
+
+# Features
+
+- Python-based backend with database support  
+- Database schema migrations using Alembic  
+- Containerized deployment with Docker and Docker Compose  
+- Configurable via `.env` file for multiple environments  
 
 ## Admin Routes
 
