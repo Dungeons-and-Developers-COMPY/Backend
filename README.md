@@ -1,15 +1,5 @@
 # Dungeons & Developers Backend
 
-Firstly, make sure to either be located on the UCT campus premises or use the UCT VPN the do the following tasks.
-
-## Copy files to server
-Windows:
-You will need to specify the route that the files should be copied to on your respective Virtual Machine.
-```Python
-scp -r Backend/my_app abdibr008@dnd-vm-1.cs.uct.ac.za:
-```
-# Dungeons & Developers Backend
-
 This repository contains the source code and configuration for a containerized web application.  
 It includes backend logic, database migrations, configuration files, and deployment scripts.  
 The project is structured to support development, testing, and production environments using Docker and Docker Compose.
